@@ -1024,3 +1024,415 @@ cat(
 )
 
 
+
+
+
+
+
+
+# SECTION 8: Descriptive statistics and preparation charts 
+
+# Checking that the analytical datasets are available
+stopifnot(
+  exists("categorical_data"),
+  exists("price_data"),
+  exists("quarter_data"),
+  exists("project_dir"),
+  exists("output_dir")
+)
+
+# Creating a folder for the charts
+figures_dir <- file.path(project_dir, "figures")
+dir.create(figures_dir, showWarnings = FALSE)
+
+# Setting a consistent coral orange for the charts
+chart_colour <- "#FF7F50"
+
+# Defining the price summaries used throughout this section
+summarise_prices <- function(x) {
+  
+  stopifnot(
+    is.numeric(x),
+    length(x) > 0,
+    !anyNA(x),
+    all(is.finite(x))
+  )
+  
+  data.frame(
+    records = length(x),
+    mean_eur = mean(x),
+    median_eur = median(x),
+    sd_eur = sd(x),
+    minimum_eur = min(x),
+    q1_eur = unname(quantile(x, 0.25)),
+    q3_eur = unname(quantile(x, 0.75)),
+    iqr_eur = IQR(x),
+    maximum_eur = max(x)
+  )
+}
+
+# Defining grouped summaries for periods, years and quarters
+summarise_groups <- function(data, group_variable) {
+  
+  grouped_prices <- split(
+    data$price_eur,
+    data[[group_variable]],
+    drop = TRUE
+  )
+  
+  grouped_summary <- do.call(
+    rbind,
+    lapply(names(grouped_prices), function(group_name) {
+      data.frame(
+        group = group_name,
+        summarise_prices(grouped_prices[[group_name]])
+      )
+    })
+  )
+  
+  rownames(grouped_summary) <- NULL
+  names(grouped_summary)[1] <- group_variable
+  
+  return(grouped_summary)
+}
+
+# Summarising the full eligible price subset
+overall_price_summary <- summarise_prices(
+  price_data$price_eur
+)
+
+cat("\nOverall eligible price summary:\n")
+print(overall_price_summary, row.names = FALSE, digits = 8)
+
+# Summarising eligible prices across the three periods
+period_price_summary <- summarise_groups(
+  price_data,
+  "period"
+)
+
+cat("\nEligible price summary by period:\n")
+print(period_price_summary, row.names = FALSE, digits = 8)
+
+# Summarising eligible prices by year
+year_price_summary <- summarise_groups(
+  price_data,
+  "year"
+)
+
+cat("\nEligible price summary by year:\n")
+print(year_price_summary, row.names = FALSE, digits = 8)
+
+# Summarising eligible prices across quarters within 2025
+quarter_price_summary <- summarise_groups(
+  quarter_data,
+  "quarter"
+)
+
+cat("\nEligible price summary by quarter within 2025:\n")
+print(quarter_price_summary, row.names = FALSE, digits = 8)
+
+# Checking that the grouped counts match their source datasets
+stopifnot(
+  overall_price_summary$records == nrow(price_data),
+  sum(period_price_summary$records) == nrow(price_data),
+  sum(year_price_summary$records) == nrow(price_data),
+  sum(quarter_price_summary$records) == nrow(quarter_data)
+)
+
+# Saving the summaries without rounding the underlying values
+write.csv(
+  overall_price_summary,
+  file.path(output_dir, "07_overall_price_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  period_price_summary,
+  file.path(output_dir, "07_period_price_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  year_price_summary,
+  file.path(output_dir, "07_year_price_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  quarter_price_summary,
+  file.path(output_dir, "07_2025_quarter_price_summary.csv"),
+  row.names = FALSE
+)
+
+# Summarising property status and market-price flags
+
+# Counting property status within each period
+status_counts <- with(
+  categorical_data,
+  table(
+    period = period,
+    property_status = property_status
+  )
+)
+
+# Calculating percentages within each period
+status_percentages <- 100 * prop.table(
+  status_counts,
+  margin = 1
+)
+
+cat("\nProperty status counts by period:\n")
+print(status_counts)
+
+cat("\nProperty status percentages within each period:\n")
+print(round(status_percentages, 2))
+
+# Counting market-price flags within each period
+market_flag_counts <- with(
+  categorical_data,
+  table(
+    period = period,
+    not_full_market_price = not_full_market_price
+  )
+)
+
+# Calculating percentages within each period
+market_flag_percentages <- 100 * prop.table(
+  market_flag_counts,
+  margin = 1
+)
+
+cat("\nNot-full-market-price counts by period:\n")
+print(market_flag_counts)
+
+cat("\nNot-full-market-price percentages within each period:\n")
+print(round(market_flag_percentages, 2))
+
+# Checking the counts and within-period percentage totals
+stopifnot(
+  sum(status_counts) == nrow(categorical_data),
+  sum(market_flag_counts) == nrow(categorical_data),
+  all(abs(rowSums(status_percentages) - 100) < 0.000001),
+  all(abs(rowSums(market_flag_percentages) - 100) < 0.000001)
+)
+
+# Combining the property-status counts and percentages
+status_summary <- as.data.frame(status_counts)
+names(status_summary)[3] <- "records"
+
+status_summary$percent_within_period <- as.vector(
+  status_percentages
+)
+
+# Combining the market-flag counts and percentages
+market_flag_summary <- as.data.frame(market_flag_counts)
+names(market_flag_summary)[3] <- "records"
+
+market_flag_summary$percent_within_period <- as.vector(
+  market_flag_percentages
+)
+
+# Saving the categorical summaries
+write.csv(
+  status_summary,
+  file.path(output_dir, "07_property_status_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  market_flag_summary,
+  file.path(output_dir, "07_market_flag_summary.csv"),
+  row.names = FALSE
+)
+
+# Creating the preparation charts 
+
+# Calculating missingness for the nine original fields
+original_fields <- c(
+  "sale_date",
+  "address",
+  "county",
+  "eircode",
+  "price_eur",
+  "not_full_market_price",
+  "vat_exclusive",
+  "property_status",
+  "property_size_description"
+)
+
+missing_percent <- 100 * colMeans(
+  is.na(categorical_data[original_fields])
+)
+
+missing_labels <- c(
+  "Sale date",
+  "Address",
+  "County",
+  "Eircode",
+  "Price",
+  "Non-full-market flag",
+  "VAT flag",
+  "Property status",
+  "Property size"
+)
+
+# Saving the missingness chart
+png(
+  file.path(figures_dir, "01_missing_fields.png"),
+  width = 2000,
+  height = 1300,
+  res = 180
+)
+
+par(
+  mar = c(5, 10, 4, 2),
+  las = 1
+)
+
+bar_positions <- barplot(
+  missing_percent,
+  names.arg = missing_labels,
+  horiz = TRUE,
+  xlim = c(0, 115),
+  col = chart_colour,
+  border = NA,
+  xlab = "Records with missing values (%)",
+  main = "Missing fields in the main dataset"
+)
+
+text(
+  x = missing_percent + 2,
+  y = bar_positions,
+  labels = paste0(round(missing_percent, 2), "%"),
+  pos = 4,
+  cex = 0.8
+)
+
+mtext(
+  paste("After exact-copy policy; n =", nrow(categorical_data)),
+  side = 3,
+  line = 0.3,
+  cex = 0.8
+)
+
+dev.off()
+
+
+# Counting all main-analysis records by year
+annual_record_counts <- data.frame(
+  year = 2019:2025,
+  records = as.integer(
+    table(
+      factor(categorical_data$year, levels = 2019:2025)
+    )
+  )
+)
+
+# Saving the annual record-count chart
+png(
+  file.path(figures_dir, "02_annual_record_counts.png"),
+  width = 2000,
+  height = 1300,
+  res = 180
+)
+
+par(
+  mar = c(5, 5, 4, 2),
+  las = 1
+)
+
+bar_positions <- barplot(
+  annual_record_counts$records,
+  names.arg = annual_record_counts$year,
+  ylim = c(0, max(annual_record_counts$records) * 1.15),
+  col = chart_colour,
+  border = NA,
+  xlab = "Sale year",
+  ylab = "Recorded transactions",
+  main = "Annual record counts, 2019-2025"
+)
+
+text(
+  x = bar_positions,
+  y = annual_record_counts$records,
+  labels = annual_record_counts$records,
+  pos = 3,
+  cex = 0.8
+)
+
+mtext(
+  "All main-analysis records after the exact-copy policy",
+  side = 3,
+  line = 0.3,
+  cex = 0.8
+)
+
+dev.off()
+
+
+# Saving the annual median-price chart
+png(
+  file.path(figures_dir, "03_annual_median_prices.png"),
+  width = 2000,
+  height = 1300,
+  res = 180
+)
+
+par(
+  mar = c(5, 5, 4, 2),
+  las = 1
+)
+
+plot(
+  as.integer(year_price_summary$year),
+  year_price_summary$median_eur / 1000,
+  type = "o",
+  pch = 16,
+  lwd = 2,
+  col = chart_colour,
+  xaxt = "n",
+  xlab = "Sale year",
+  ylab = "Median recorded price (EUR thousands)",
+  main = "Annual median recorded prices, 2019-2025"
+)
+
+axis(
+  side = 1,
+  at = 2019:2025
+)
+
+mtext(
+  "Full-market, second-hand records; VAT Exclusive = No",
+  side = 3,
+  line = 0.3,
+  cex = 0.8
+)
+
+dev.off()
+
+
+# Checking that all three chart files were created
+preparation_charts <- file.path(
+  figures_dir,
+  c(
+    "01_missing_fields.png",
+    "02_annual_record_counts.png",
+    "03_annual_median_prices.png"
+  )
+)
+
+stopifnot(
+  all(file.exists(preparation_charts)),
+  all(file.info(preparation_charts)$size > 0)
+)
+
+cat(
+  "\nSection 8 completed.",
+  "\nPrice-analysis records summarised:", nrow(price_data),
+  "\n2025 quarter records summarised:", nrow(quarter_data),
+  "\nCategorical records summarised:", nrow(categorical_data),
+  "\nPreparation charts saved:", length(preparation_charts),
+  "\n"
+)
+
+print(preparation_charts)

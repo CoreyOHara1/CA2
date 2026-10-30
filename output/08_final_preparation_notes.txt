@@ -1,0 +1,16 @@
+The original master dataset contained 5,964 records and nine variables.
+Dates were converted to Date format and prices were converted to numeric values.
+County, property status, VAT flag and market-price flag were converted to factors.
+Seven additional exact copies were set aside for the main analysis.
+All 5,964 formatted records were retained for a later sensitivity check.
+Year, month, quarter and comparison-period variables were created.
+Missing Eircodes and property-size descriptions were retained.
+All fields required for the five research questions were complete.
+201 prices above the quartile-based review threshold were retained.
+Fourteen new-property records with VAT Exclusive No were retained.
+The price-analysis subset applied full-market, second-hand and VAT Exclusive No rules.
+The 2025 quarter subset applied the same rules and was restricted to 2025.
+The categorical dataset retained all 5,957 main-analysis records.
+RDS files preserve the prepared variable types for the testing script.
+CSV exports omit addresses and Eircodes but are not a guarantee of full anonymisation.
+The original master CSV was not changed during preparation.
