@@ -1,0 +1,5 @@
+Exact matches were identified across all nine imported columns.
+The first occurrence of each exact match was retained for the main analysis.
+Seven additional exact copies were set aside under this policy.
+The full formatted dataset was retained for a later sensitivity check.
+Exact matching does not establish that the source records are erroneous.

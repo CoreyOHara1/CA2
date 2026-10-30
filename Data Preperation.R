@@ -272,3 +272,86 @@ View(duplicate_review)
 cat("Additional exact copies:", sum(duplicate_rows), "\n")
 cat("Records involved in exact matches:", sum(matching_rows), "\n")
 cat("Records currently retained:", nrow(sligo), "\n")
+
+
+
+# SECTION 4: Applying the duplicate policy
+
+# Checking that the imported and formatted datasets are available
+stopifnot(
+  exists("raw"),
+  exists("sligo"),
+  exists("output_dir"),
+  nrow(raw) == nrow(sligo)
+)
+
+# Identifying exact copies using all original imported columns
+duplicate_rows <- duplicated(raw)
+
+# Keeping all formatted records for the later sensitivity check
+sligo_all_records <- sligo
+
+# Retaining the first occurrence of each exact match
+# Keeping sligo unchanged so this section can be rerun
+sligo_clean <- sligo_all_records[!duplicate_rows, ]
+
+# Resetting row names after subsetting
+rownames(sligo_clean) <- NULL
+
+# Checking the retained records against the original duplicate flags
+stopifnot(
+  nrow(sligo_all_records) == nrow(raw),
+  nrow(sligo_clean) == nrow(raw) - sum(duplicate_rows),
+  !anyDuplicated(raw[!duplicate_rows, ])
+)
+
+# Recording the effect of the duplicate policy
+duplicate_audit <- data.frame(
+  stage = c(
+    "Records before duplicate handling",
+    "Additional exact copies set aside",
+    "Records retained for main analysis"
+  ),
+  records = c(
+    nrow(sligo_all_records),
+    sum(duplicate_rows),
+    nrow(sligo_clean)
+  )
+)
+
+print(duplicate_audit, row.names = FALSE)
+
+# Saving the aggregate counts for the report
+write.csv(
+  duplicate_audit,
+  file.path(output_dir, "03_duplicate_handling_audit.csv"),
+  row.names = FALSE
+)
+
+# Displaying the sizes of both working datasets
+cat(
+  "\nRecords retained for the main analysis:",
+  nrow(sligo_clean),
+  "\n"
+)
+
+cat(
+  "Records retained for the sensitivity check:",
+  nrow(sligo_all_records),
+  "\n"
+)
+
+# Recording the decision for the report
+duplicate_policy <- c(
+  "Exact matches were identified across all nine imported columns.",
+  "The first occurrence of each exact match was retained for the main analysis.",
+  "Seven additional exact copies were set aside under this policy.",
+  "The full formatted dataset was retained for a later sensitivity check.",
+  "Exact matching does not establish that the source records are erroneous."
+)
+
+writeLines(
+  duplicate_policy,
+  file.path(output_dir, "03_duplicate_policy.txt")
+)
+
