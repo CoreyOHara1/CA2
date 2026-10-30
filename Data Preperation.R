@@ -778,3 +778,249 @@ cat(
   "\nSensitivity-check records:", nrow(sligo_all_records),
   "\nNo records or prices changed during this review.\n"
 )
+
+
+
+# SECTION 7: Defining the analytical datasets 
+
+# Checking that both working datasets and the output folder exist
+stopifnot(
+  exists("sligo_clean"),
+  exists("sligo_all_records"),
+  exists("output_dir")
+)
+
+# Checking the fields used to select the analytical records
+selection_fields <- c(
+  "not_full_market_price",
+  "property_status",
+  "vat_exclusive",
+  "year"
+)
+
+stopifnot(
+  all(complete.cases(sligo_clean[selection_fields])),
+  all(complete.cases(sligo_all_records[selection_fields]))
+)
+
+# Keeping all main-analysis records for the categorical questions
+# RQ4: Period and property status
+# RQ5: Period and not-full-market-price status
+categorical_data <- sligo_clean
+
+# Selecting the records for the price questions
+# RQ1: Prices across the three periods
+# RQ3: Sale date and recorded price
+price_data <- subset(
+  sligo_clean,
+  not_full_market_price == "No" &
+    property_status == "Second-hand" &
+    vat_exclusive == "No"
+)
+
+price_data <- droplevels(price_data)
+
+# Selecting the 2025 records for the quarter comparison
+# RQ2: Prices across quarters within 2025
+quarter_data <- subset(
+  price_data,
+  year == 2025
+)
+
+quarter_data <- droplevels(quarter_data)
+
+
+# Preparing the corresponding sensitivity-check subsets
+
+# Applying the same price rules with the exact copies retained
+price_data_all_records <- subset(
+  sligo_all_records,
+  not_full_market_price == "No" &
+    property_status == "Second-hand" &
+    vat_exclusive == "No"
+)
+
+price_data_all_records <- droplevels(
+  price_data_all_records
+)
+
+# Selecting the corresponding 2025 records
+quarter_data_all_records <- subset(
+  price_data_all_records,
+  year == 2025
+)
+
+quarter_data_all_records <- droplevels(
+  quarter_data_all_records
+)
+
+
+# Checking the analytical datasets
+
+# Checking that the selected datasets contain records
+stopifnot(
+  nrow(price_data) > 0,
+  nrow(quarter_data) > 0,
+  nrow(price_data_all_records) > 0,
+  nrow(quarter_data_all_records) > 0
+)
+
+# Checking that the price rules were applied correctly
+stopifnot(
+  all(price_data$not_full_market_price == "No"),
+  all(price_data$property_status == "Second-hand"),
+  all(price_data$vat_exclusive == "No"),
+  all(quarter_data$year == 2025),
+  nrow(quarter_data) <= nrow(price_data),
+  identical(categorical_data, sligo_clean)
+)
+
+# Checking that every comparison group contains records
+stopifnot(
+  all(
+    table(
+      factor(
+        price_data$period,
+        levels = c("2019", "2020-2021", "2022-2025")
+      )
+    ) > 0
+  ),
+  all(
+    table(
+      factor(
+        quarter_data$quarter,
+        levels = c("Q1", "Q2", "Q3", "Q4")
+      )
+    ) > 0
+  )
+)
+
+# Checking completeness of the variables used in the price tests
+stopifnot(
+  all(
+    complete.cases(
+      price_data[c("sale_date", "price_eur", "period")]
+    )
+  ),
+  all(
+    complete.cases(
+      quarter_data[c("price_eur", "quarter")]
+    )
+  )
+)
+
+
+# Recording the subset sizes and selection rules 
+
+subset_summary <- data.frame(
+  dataset = c(
+    "categorical_data",
+    "price_data",
+    "quarter_data",
+    "sligo_all_records",
+    "price_data_all_records",
+    "quarter_data_all_records"
+  ),
+  purpose = c(
+    "RQ4 and RQ5",
+    "RQ1 and RQ3",
+    "RQ2",
+    "Categorical sensitivity checks",
+    "RQ1 and RQ3 sensitivity checks",
+    "RQ2 sensitivity check"
+  ),
+  records = c(
+    nrow(categorical_data),
+    nrow(price_data),
+    nrow(quarter_data),
+    nrow(sligo_all_records),
+    nrow(price_data_all_records),
+    nrow(quarter_data_all_records)
+  )
+)
+
+print(subset_summary, row.names = FALSE)
+
+# Recording the number outside the price-analysis eligibility rules
+price_selection_summary <- data.frame(
+  stage = c(
+    "Main-analysis records",
+    "Eligible price-analysis records",
+    "Records outside the price-analysis rules",
+    "Eligible price records within 2025"
+  ),
+  records = c(
+    nrow(sligo_clean),
+    nrow(price_data),
+    nrow(sligo_clean) - nrow(price_data),
+    nrow(quarter_data)
+  )
+)
+
+print(price_selection_summary, row.names = FALSE)
+
+# Recording the inclusion rules for each research question
+question_rules <- data.frame(
+  question = c("RQ1", "RQ2", "RQ3", "RQ4", "RQ5"),
+  dataset = c(
+    "price_data",
+    "quarter_data",
+    "price_data",
+    "categorical_data",
+    "categorical_data"
+  ),
+  inclusion_rule = c(
+    "Full-market, second-hand, VAT Exclusive No; 2019-2025.",
+    "Same price eligibility rules; restricted to 2025.",
+    "Full-market, second-hand, VAT Exclusive No; 2019-2025.",
+    "All main-analysis records after the exact-copy policy.",
+    "All main-analysis records after the exact-copy policy."
+  ),
+  records = c(
+    nrow(price_data),
+    nrow(quarter_data),
+    nrow(price_data),
+    nrow(categorical_data),
+    nrow(categorical_data)
+  )
+)
+
+print(question_rules, row.names = FALSE)
+
+# Checking the group sizes for the planned comparisons
+cat("\nPrice-analysis records by period:\n")
+print(table(price_data$period))
+
+cat("\nEligible 2025 price records by quarter:\n")
+print(table(quarter_data$quarter))
+
+
+# Saving the subset documentation 
+
+write.csv(
+  subset_summary,
+  file.path(output_dir, "06_analytical_subset_sizes.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  price_selection_summary,
+  file.path(output_dir, "06_price_selection_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  question_rules,
+  file.path(output_dir, "06_research_question_datasets.csv"),
+  row.names = FALSE
+)
+
+cat(
+  "\nSection 7 completed.",
+  "\nCategorical-analysis records:", nrow(categorical_data),
+  "\nPrice-analysis records:", nrow(price_data),
+  "\nEligible 2025 price records:", nrow(quarter_data),
+  "\n"
+)
+
+
