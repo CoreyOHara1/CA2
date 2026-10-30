@@ -1,0 +1,7 @@
+"dataset","purpose","records"
+"categorical_data","RQ4 and RQ5",5957
+"price_data","RQ1 and RQ3",5070
+"quarter_data","RQ2",675
+"sligo_all_records","Categorical sensitivity checks",5964
+"price_data_all_records","RQ1 and RQ3 sensitivity checks",5074
+"quarter_data_all_records","RQ2 sensitivity check",676

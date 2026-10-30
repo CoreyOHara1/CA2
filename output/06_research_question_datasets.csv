@@ -1,0 +1,6 @@
+"question","dataset","inclusion_rule","records"
+"RQ1","price_data","Full-market, second-hand, VAT Exclusive No; 2019-2025.",5070
+"RQ2","quarter_data","Same price eligibility rules; restricted to 2025.",675
+"RQ3","price_data","Full-market, second-hand, VAT Exclusive No; 2019-2025.",5070
+"RQ4","categorical_data","All main-analysis records after the exact-copy policy.",5957
+"RQ5","categorical_data","All main-analysis records after the exact-copy policy.",5957
