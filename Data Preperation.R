@@ -210,3 +210,65 @@ cat(
   nrow(sligo),
   "\n"
 )
+
+
+
+# SECTION 3: Reviewing the exact copies
+
+# Checking that the original and formatted datasets are available
+stopifnot(
+  exists("raw"),
+  exists("sligo"),
+  nrow(raw) == nrow(sligo)
+)
+
+# Identifying additional exact copies in the original imported data
+duplicate_rows <- duplicated(raw)
+
+# Identifying all matching rows, including their first occurrences
+matching_rows <- duplicate_rows |
+  duplicated(raw, fromLast = TRUE)
+
+# Creating a review table using the formatted values
+# Keeping source positions aligned with the original imported data
+duplicate_review <- data.frame(
+  source_row = which(matching_rows),
+  additional_copy = duplicate_rows[matching_rows],
+  sligo[matching_rows, ],
+  row.names = NULL
+)
+
+# Sorting matching records together for easier inspection
+duplicate_review <- duplicate_review[
+  order(
+    duplicate_review$sale_date,
+    duplicate_review$address,
+    duplicate_review$price_eur,
+    duplicate_review$source_row
+  ),
+]
+
+# Displaying the fields needed for the initial review
+print(
+  duplicate_review[
+    c(
+      "source_row",
+      "additional_copy",
+      "sale_date",
+      "address",
+      "price_eur",
+      "property_status",
+      "not_full_market_price",
+      "vat_exclusive"
+    )
+  ],
+  row.names = FALSE
+)
+
+# Opening all fields in the RStudio data viewer
+View(duplicate_review)
+
+# Summarising the review without removing any records
+cat("Additional exact copies:", sum(duplicate_rows), "\n")
+cat("Records involved in exact matches:", sum(matching_rows), "\n")
+cat("Records currently retained:", nrow(sligo), "\n")
