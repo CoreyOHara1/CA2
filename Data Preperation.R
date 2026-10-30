@@ -1436,3 +1436,446 @@ cat(
 )
 
 print(preparation_charts)
+
+
+
+
+
+
+# SECTION 9: Validating and exporting the prepared data 
+
+# Checking that all analytical datasets are available
+stopifnot(
+  exists("sligo_clean"),
+  exists("price_data"),
+  exists("quarter_data"),
+  exists("sligo_all_records"),
+  exists("price_data_all_records"),
+  exists("quarter_data_all_records"),
+  exists("project_dir"),
+  exists("output_dir"),
+  exists("figures_dir")
+)
+
+# Creating a data folder for the exported datasets
+data_dir <- file.path(project_dir, "data")
+dir.create(data_dir, showWarnings = FALSE)
+
+# Defining the fields required for the five research questions
+analysis_fields <- c(
+  "sale_date",
+  "price_eur",
+  "not_full_market_price",
+  "vat_exclusive",
+  "property_status",
+  "year",
+  "month",
+  "quarter",
+  "period"
+)
+
+
+# Checking the main-analysis dataset 
+
+# Checking the required variables and types in the main dataset
+stopifnot(
+  nrow(sligo_clean) == 5957,
+  inherits(sligo_clean$sale_date, "Date"),
+  is.numeric(sligo_clean$price_eur),
+  is.factor(sligo_clean$county),
+  is.factor(sligo_clean$not_full_market_price),
+  is.factor(sligo_clean$vat_exclusive),
+  is.factor(sligo_clean$property_status),
+  is.integer(sligo_clean$year),
+  is.integer(sligo_clean$month),
+  is.factor(sligo_clean$quarter),
+  is.factor(sligo_clean$period),
+  all(is.finite(sligo_clean$price_eur)),
+  all(sligo_clean$price_eur > 0),
+  all(sligo_clean$year %in% 2019:2025),
+  all(sligo_clean$month %in% 1:12),
+  all(levels(sligo_clean$quarter) == c("Q1", "Q2", "Q3", "Q4")),
+  all(
+    levels(sligo_clean$period) ==
+      c("2019", "2020-2021", "2022-2025")
+  )
+)
+
+# Checking the fields required for the five research questions
+# Eircodes and property-size descriptions are retained with missing values
+stopifnot(
+  all(analysis_fields %in% names(sligo_clean)),
+  all(complete.cases(sligo_clean[analysis_fields]))
+)
+
+
+# Checking the price-analysis dataset 
+
+# Checking the price-analysis dataset and its required fields
+stopifnot(
+  nrow(price_data) == 5070,
+  inherits(price_data$sale_date, "Date"),
+  is.numeric(price_data$price_eur),
+  is.factor(price_data$period),
+  all(is.finite(price_data$price_eur)),
+  all(price_data$price_eur > 0),
+  all(price_data$not_full_market_price == "No"),
+  all(price_data$property_status == "Second-hand"),
+  all(price_data$vat_exclusive == "No"),
+  all(price_data$year %in% 2019:2025)
+)
+
+# Checking the fields required for the price questions
+# Eircodes and property-size descriptions are retained with missing values
+stopifnot(
+  all(analysis_fields %in% names(price_data)),
+  all(complete.cases(price_data[analysis_fields]))
+)
+
+# Checking that every price-analysis period contains records
+stopifnot(
+  all(
+    table(
+      factor(
+        price_data$period,
+        levels = c("2019", "2020-2021", "2022-2025")
+      )
+    ) > 0
+  )
+)
+
+
+# Checking the 2025 quarter dataset 
+
+# Checking the 2025 quarter dataset and its required fields
+stopifnot(
+  nrow(quarter_data) == 675,
+  is.numeric(quarter_data$price_eur),
+  is.factor(quarter_data$quarter),
+  all(is.finite(quarter_data$price_eur)),
+  all(quarter_data$price_eur > 0),
+  all(quarter_data$year == 2025),
+  all(quarter_data$not_full_market_price == "No"),
+  all(quarter_data$property_status == "Second-hand"),
+  all(quarter_data$vat_exclusive == "No")
+)
+
+# Checking the fields required for the quarter question
+# Eircodes and property-size descriptions are retained with missing values
+stopifnot(
+  all(analysis_fields %in% names(quarter_data)),
+  all(complete.cases(quarter_data[analysis_fields]))
+)
+
+# Checking that every quarter contains records
+stopifnot(
+  all(
+    table(
+      factor(
+        quarter_data$quarter,
+        levels = c("Q1", "Q2", "Q3", "Q4")
+      )
+    ) > 0
+  )
+)
+
+
+# Checking the sensitivity-check datasets 
+
+# Checking the datasets containing all formatted records
+stopifnot(
+  nrow(sligo_all_records) == 5964,
+  nrow(price_data_all_records) == 5074,
+  nrow(quarter_data_all_records) == 676,
+  inherits(sligo_all_records$sale_date, "Date"),
+  is.numeric(sligo_all_records$price_eur),
+  all(
+    is.finite(sligo_all_records$price_eur),
+    is.finite(price_data_all_records$price_eur),
+    is.finite(quarter_data_all_records$price_eur)
+  ),
+  all(
+    sligo_all_records$price_eur > 0,
+    price_data_all_records$price_eur > 0,
+    quarter_data_all_records$price_eur > 0
+  )
+)
+
+# Checking the fields required for the sensitivity-check analysis
+# Eircodes and property-size descriptions are retained with missing values
+stopifnot(
+  all(
+    complete.cases(
+      sligo_all_records[analysis_fields]
+    )
+  ),
+  all(
+    complete.cases(
+      price_data_all_records[analysis_fields]
+    )
+  ),
+  all(
+    complete.cases(
+      quarter_data_all_records[analysis_fields]
+    )
+  )
+)
+
+# Checking that the sensitivity-check datasets are larger
+stopifnot(
+  nrow(sligo_all_records) > nrow(sligo_clean),
+  nrow(price_data_all_records) > nrow(price_data),
+  nrow(quarter_data_all_records) > nrow(quarter_data)
+)
+
+
+# Exporting the analytical datasets 
+
+# Exporting the main categorical-analysis dataset
+saveRDS(
+  sligo_clean,
+  file.path(data_dir, "sligo_clean.rds")
+)
+
+# Exporting the eligible price-analysis dataset
+saveRDS(
+  price_data,
+  file.path(data_dir, "price_data.rds")
+)
+
+# Exporting the 2025 quarter dataset
+saveRDS(
+  quarter_data,
+  file.path(data_dir, "quarter_data.rds")
+)
+
+# Exporting the sensitivity-check datasets
+saveRDS(
+  sligo_all_records,
+  file.path(data_dir, "sligo_all_records.rds")
+)
+
+saveRDS(
+  price_data_all_records,
+  file.path(data_dir, "price_data_all_records.rds")
+)
+
+saveRDS(
+  quarter_data_all_records,
+  file.path(data_dir, "quarter_data_all_records.rds")
+)
+
+
+# Exporting readable CSV copies 
+
+# Selecting the analytical fields for the CSV exports
+# Excluding addresses and Eircodes from the analytical exports
+write.csv(
+  sligo_clean[analysis_fields],
+  file.path(data_dir, "sligo_clean.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  price_data[analysis_fields],
+  file.path(data_dir, "price_data.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  quarter_data[analysis_fields],
+  file.path(data_dir, "quarter_data.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  sligo_all_records[analysis_fields],
+  file.path(data_dir, "sligo_all_records.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  price_data_all_records[analysis_fields],
+  file.path(data_dir, "price_data_all_records.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  quarter_data_all_records[analysis_fields],
+  file.path(data_dir, "quarter_data_all_records.csv"),
+  row.names = FALSE
+)
+
+
+# Checking the exported RDS files 
+
+# Reading each RDS file back into a temporary object
+check_clean <- readRDS(
+  file.path(data_dir, "sligo_clean.rds")
+)
+
+check_prices <- readRDS(
+  file.path(data_dir, "price_data.rds")
+)
+
+check_quarters <- readRDS(
+  file.path(data_dir, "quarter_data.rds")
+)
+
+check_all_records <- readRDS(
+  file.path(data_dir, "sligo_all_records.rds")
+)
+
+check_prices_all_records <- readRDS(
+  file.path(data_dir, "price_data_all_records.rds")
+)
+
+check_quarters_all_records <- readRDS(
+  file.path(data_dir, "quarter_data_all_records.rds")
+)
+
+# Checking that the restored objects match the working datasets
+stopifnot(
+  identical(check_clean, sligo_clean),
+  identical(check_prices, price_data),
+  identical(check_quarters, quarter_data),
+  identical(check_all_records, sligo_all_records),
+  identical(check_prices_all_records, price_data_all_records),
+  identical(check_quarters_all_records, quarter_data_all_records)
+)
+
+# Removing the temporary restored objects
+rm(
+  check_clean,
+  check_prices,
+  check_quarters,
+  check_all_records,
+  check_prices_all_records,
+  check_quarters_all_records
+)
+
+
+# Recording the final preparation audit 
+
+# Creating the final preparation audit
+final_preparation_audit <- data.frame(
+  stage = c(
+    "Original master records",
+    "Additional exact copies set aside",
+    "Main-analysis records after duplicate policy",
+    "Categorical-analysis records",
+    "Eligible price-analysis records",
+    "Eligible 2025 quarter records",
+    "All formatted records for sensitivity checks",
+    "Eligible price records with copies retained",
+    "Eligible 2025 quarter records with copies retained",
+    "Missing Eircodes retained",
+    "Missing property-size descriptions retained",
+    "Flagged prices retained",
+    "New records with VAT Exclusive No retained",
+    "Preparation charts saved"
+  ),
+  records = c(
+    nrow(raw),
+    nrow(raw) - nrow(sligo_clean),
+    nrow(sligo_clean),
+    nrow(categorical_data),
+    nrow(price_data),
+    nrow(quarter_data),
+    nrow(sligo_all_records),
+    nrow(price_data_all_records),
+    nrow(quarter_data_all_records),
+    sum(is.na(sligo_clean$eircode)),
+    sum(is.na(sligo_clean$property_size_description)),
+    sum(sligo_clean$price_eur > 495500),
+    sum(
+      sligo_clean$property_status == "New" &
+        sligo_clean$vat_exclusive == "No"
+    ),
+    length(list.files(figures_dir, pattern = "\\.png$"))
+  )
+)
+
+print(final_preparation_audit, row.names = FALSE)
+
+# Saving the final preparation audit
+write.csv(
+  final_preparation_audit,
+  file.path(output_dir, "08_final_preparation_audit.csv"),
+  row.names = FALSE
+)
+
+
+# Recording the final preparation decisions 
+
+final_preparation_notes <- c(
+  "The original master dataset contained 5,964 records and nine variables.",
+  "Dates were converted to Date format and prices were converted to numeric values.",
+  "County, property status, VAT flag and market-price flag were converted to factors.",
+  "Seven additional exact copies were set aside for the main analysis.",
+  "All 5,964 formatted records were retained for a later sensitivity check.",
+  "Year, month, quarter and comparison-period variables were created.",
+  "Missing Eircodes and property-size descriptions were retained.",
+  "All fields required for the five research questions were complete.",
+  "201 prices above the quartile-based review threshold were retained.",
+  "Fourteen new-property records with VAT Exclusive No were retained.",
+  "The price-analysis subset applied full-market, second-hand and VAT Exclusive No rules.",
+  "The 2025 quarter subset applied the same rules and was restricted to 2025.",
+  "The categorical dataset retained all 5,957 main-analysis records.",
+  "RDS files preserve the prepared variable types for the testing script.",
+  "CSV exports omit addresses and Eircodes but are not a guarantee of full anonymisation.",
+  "The original master CSV was not changed during preparation."
+)
+
+# Saving the final preparation decisions
+writeLines(
+  final_preparation_notes,
+  file.path(output_dir, "08_final_preparation_notes.txt")
+)
+
+
+# Recording the R session information 
+
+# Saving the R version, operating system and package information
+writeLines(
+  capture.output(sessionInfo()),
+  file.path(output_dir, "08_preparation_session_info.txt")
+)
+
+
+# Checking the final outputs
+
+# Listing the exported RDS files
+exported_rds_files <- list.files(
+  data_dir,
+  pattern = "\\.rds$",
+  full.names = TRUE
+)
+
+# Listing the exported CSV files
+exported_csv_files <- list.files(
+  data_dir,
+  pattern = "\\.csv$",
+  full.names = TRUE
+)
+
+# Checking that all expected exports exist
+stopifnot(
+  length(exported_rds_files) == 6,
+  length(exported_csv_files) == 6,
+  all(file.info(exported_rds_files)$size > 0),
+  all(file.info(exported_csv_files)$size > 0)
+)
+
+# Displaying the completed preparation outputs
+cat("\nPreparation completed successfully.\n")
+cat("Main-analysis records:", nrow(sligo_clean), "\n")
+cat("Eligible price-analysis records:", nrow(price_data), "\n")
+cat("Eligible 2025 quarter records:", nrow(quarter_data), "\n")
+cat("Sensitivity-check records:", nrow(sligo_all_records), "\n")
+cat("RDS files exported:", length(exported_rds_files), "\n")
+cat("CSV files exported:", length(exported_csv_files), "\n")
+cat("Preparation charts saved:", length(list.files(figures_dir, pattern = "\\.png$")), "\n")
+
+print(exported_rds_files)
+print(exported_csv_files)
