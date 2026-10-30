@@ -1,0 +1,9 @@
+"measure","value"
+"First quartile (EUR)",103000
+"Third quartile (EUR)",260000
+"Interquartile range (EUR)",157000
+"Lower review threshold (EUR)",-132500
+"Upper review threshold (EUR)",495500
+"Records below lower threshold",0
+"Records above upper threshold",201
+"Total records flagged",201

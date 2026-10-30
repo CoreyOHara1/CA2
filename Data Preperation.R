@@ -532,3 +532,249 @@ cat(
   "\nSensitivity-check records:", nrow(sligo_all_records),
   "\n"
 )
+
+
+
+
+# SECTION 6: Reviewing missing fields and extreme prices
+
+# Checking that both working datasets and the output folder exist
+stopifnot(
+  exists("sligo_clean"),
+  exists("sligo_all_records"),
+  exists("output_dir")
+)
+
+# Recording the datasets before the review
+clean_before_review <- sligo_clean
+all_before_review <- sligo_all_records
+
+
+# Reviewing missing fields 
+
+# Counting missing values after the duplicate policy
+missing_review <- data.frame(
+  variable = names(sligo_clean),
+  missing_records = colSums(is.na(sligo_clean)),
+  missing_percent = round(
+    100 * colMeans(is.na(sligo_clean)),
+    2
+  ),
+  row.names = NULL
+)
+
+print(missing_review, row.names = FALSE)
+
+# Checking the fields required for the five research questions
+required_fields <- c(
+  "sale_date",
+  "price_eur",
+  "not_full_market_price",
+  "vat_exclusive",
+  "property_status",
+  "year",
+  "month",
+  "quarter",
+  "period"
+)
+
+stopifnot(
+  all(required_fields %in% names(sligo_clean)),
+  all(complete.cases(sligo_clean[required_fields]))
+)
+
+# Recording the missing-field decisions
+missing_decisions <- data.frame(
+  variable = c(
+    "eircode",
+    "property_size_description"
+  ),
+  decision = c(
+    "Retaining records with missing Eircodes; location-level analysis is not planned.",
+    "Retaining records with missing size descriptions; property size is not used in the five questions."
+  )
+)
+
+print(missing_decisions, row.names = FALSE)
+
+
+# Reviewing extreme recorded prices 
+
+# Checking that all recorded prices are usable numeric values
+stopifnot(
+  is.numeric(sligo_clean$price_eur),
+  !anyNA(sligo_clean$price_eur),
+  all(is.finite(sligo_clean$price_eur)),
+  all(sligo_clean$price_eur > 0)
+)
+
+# Calculating the quartiles and interquartile range
+price_quartiles <- quantile(
+  sligo_clean$price_eur,
+  probs = c(0.25, 0.75),
+  names = FALSE
+)
+
+price_iqr <- IQR(sligo_clean$price_eur)
+
+lower_fence <- price_quartiles[1] - 1.5 * price_iqr
+upper_fence <- price_quartiles[2] + 1.5 * price_iqr
+
+# Flagging prices outside the review thresholds
+low_price_flag <- sligo_clean$price_eur < lower_fence
+high_price_flag <- sligo_clean$price_eur > upper_fence
+
+extreme_price_flag <- low_price_flag | high_price_flag
+
+# Summarising the thresholds and flagged record counts
+price_review_summary <- data.frame(
+  measure = c(
+    "First quartile (EUR)",
+    "Third quartile (EUR)",
+    "Interquartile range (EUR)",
+    "Lower review threshold (EUR)",
+    "Upper review threshold (EUR)",
+    "Records below lower threshold",
+    "Records above upper threshold",
+    "Total records flagged"
+  ),
+  value = c(
+    price_quartiles[1],
+    price_quartiles[2],
+    price_iqr,
+    lower_fence,
+    upper_fence,
+    sum(low_price_flag),
+    sum(high_price_flag),
+    sum(extreme_price_flag)
+  )
+)
+
+print(price_review_summary, row.names = FALSE)
+
+# Inspecting the ten lowest and highest recorded prices
+# Omitting addresses from the printed review
+review_fields <- c(
+  "sale_date",
+  "price_eur",
+  "property_status",
+  "not_full_market_price",
+  "vat_exclusive"
+)
+
+lowest_prices <- sligo_clean[
+  head(order(sligo_clean$price_eur), 10),
+  review_fields
+]
+
+highest_prices <- sligo_clean[
+  head(order(sligo_clean$price_eur, decreasing = TRUE), 10),
+  review_fields
+]
+
+cat("\nTen lowest recorded prices:\n")
+print(lowest_prices, row.names = FALSE)
+
+cat("\nTen highest recorded prices:\n")
+print(highest_prices, row.names = FALSE)
+
+
+# Reviewing property status and VAT flags 
+
+status_vat_counts <- with(
+  sligo_clean,
+  table(
+    property_status = property_status,
+    vat_exclusive = vat_exclusive
+  )
+)
+
+print(status_vat_counts)
+
+# Counting combinations for review without treating them as errors
+new_vat_no <- with(
+  sligo_clean,
+  property_status == "New" & vat_exclusive == "No"
+)
+
+second_hand_vat_yes <- with(
+  sligo_clean,
+  property_status == "Second-hand" & vat_exclusive == "Yes"
+)
+
+vat_review_summary <- data.frame(
+  combination = c(
+    "New property with VAT Exclusive = No",
+    "Second-hand property with VAT Exclusive = Yes"
+  ),
+  records = c(
+    sum(new_vat_no),
+    sum(second_hand_vat_yes)
+  )
+)
+
+print(vat_review_summary, row.names = FALSE)
+
+
+# Saving the review evidence 
+
+write.csv(
+  missing_review,
+  file.path(output_dir, "05_missing_values_after_duplicates.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  missing_decisions,
+  file.path(output_dir, "05_missing_field_decisions.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  price_review_summary,
+  file.path(output_dir, "05_price_review_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  as.data.frame(status_vat_counts),
+  file.path(output_dir, "05_property_status_vat_counts.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  vat_review_summary,
+  file.path(output_dir, "05_vat_review_summary.csv"),
+  row.names = FALSE
+)
+
+# Recording the review decisions without changing the datasets
+review_decisions <- c(
+  "Records with missing Eircodes or size descriptions were retained.",
+  "All fields required for the five research questions were checked for missing values.",
+  "Prices outside the quartile-based thresholds were flagged for review.",
+  "Flagged prices were not deleted, capped or replaced.",
+  "Property-status and VAT combinations were counted without assuming they were errors.",
+  "Price-analysis eligibility rules will be applied separately in Section 7."
+)
+
+writeLines(
+  review_decisions,
+  file.path(output_dir, "05_data_quality_decisions.txt")
+)
+
+# Checking that this review has not changed either dataset
+stopifnot(
+  identical(sligo_clean, clean_before_review),
+  identical(sligo_all_records, all_before_review)
+)
+
+# Removing the temporary comparison copies
+rm(clean_before_review, all_before_review)
+
+cat(
+  "\nSection 6 completed.",
+  "\nMain-analysis records:", nrow(sligo_clean),
+  "\nSensitivity-check records:", nrow(sligo_all_records),
+  "\nNo records or prices changed during this review.\n"
+)

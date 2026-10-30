@@ -1,0 +1,3 @@
+"variable","decision"
+"eircode","Retaining records with missing Eircodes; location-level analysis is not planned."
+"property_size_description","Retaining records with missing size descriptions; property size is not used in the five questions."

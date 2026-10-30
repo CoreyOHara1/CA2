@@ -1,0 +1,6 @@
+Records with missing Eircodes or size descriptions were retained.
+All fields required for the five research questions were checked for missing values.
+Prices outside the quartile-based thresholds were flagged for review.
+Flagged prices were not deleted, capped or replaced.
+Property-status and VAT combinations were counted without assuming they were errors.
+Price-analysis eligibility rules will be applied separately in Section 7.
