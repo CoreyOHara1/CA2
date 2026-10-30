@@ -69,3 +69,144 @@ write.csv(
   file.path(output_dir, "01_missing_value_audit.csv"),
   row.names = FALSE
 )
+
+
+# SECTION 2: Formatting the variables
+
+# Checking that the imported data and output folder are available
+stopifnot(
+  exists("raw"),
+  exists("output_dir")
+)
+
+# Creating a working copy and keeping raw unchanged
+sligo <- raw
+
+# Renaming the columns for use in the analysis
+names(sligo) <- c(
+  "sale_date",
+  "address",
+  "county",
+  "eircode",
+  "price_eur",
+  "not_full_market_price",
+  "vat_exclusive",
+  "property_status",
+  "property_size_description"
+)
+
+# Removing surrounding spaces and treating empty text as missing
+sligo[] <- lapply(sligo, function(x) {
+  x <- trimws(x)
+  x[!is.na(x) & x == ""] <- NA_character_
+  x
+})
+
+# Keeping the date text for checking the conversion
+original_dates <- sligo$sale_date
+
+# Converting the dates from day/month/year
+sligo$sale_date <- as.Date(
+  original_dates,
+  format = "%d/%m/%Y"
+)
+
+# Removing currency symbols and commas before converting prices
+sligo$price_eur <- as.numeric(
+  gsub("[\u20ac,]", "", sligo$price_eur)
+)
+
+# Checking for failed conversions and non-positive prices
+stopifnot(
+  !anyNA(sligo$sale_date),
+  !anyNA(sligo$price_eur),
+  all(is.finite(sligo$price_eur)),
+  all(sligo$price_eur > 0),
+  all(
+    format(sligo$sale_date, "%d/%m/%Y") == original_dates
+  )
+)
+
+# Checking the values used in the Yes/No fields
+stopifnot(
+  !anyNA(sligo$not_full_market_price),
+  !anyNA(sligo$vat_exclusive),
+  all(sligo$not_full_market_price %in% c("No", "Yes")),
+  all(sligo$vat_exclusive %in% c("No", "Yes"))
+)
+
+# Converting the Yes/No fields to factors
+sligo$not_full_market_price <- factor(
+  sligo$not_full_market_price,
+  levels = c("No", "Yes")
+)
+
+sligo$vat_exclusive <- factor(
+  sligo$vat_exclusive,
+  levels = c("No", "Yes")
+)
+
+# Checking the property descriptions before shortening the labels
+property_labels <- c(
+  "New Dwelling house /Apartment",
+  "Second-Hand Dwelling house /Apartment"
+)
+
+stopifnot(
+  !anyNA(sligo$property_status),
+  all(sligo$property_status %in% property_labels)
+)
+
+# Converting property status to a factor
+sligo$property_status <- factor(
+  sligo$property_status,
+  levels = property_labels,
+  labels = c("New", "Second-hand")
+)
+
+# Checking the county and converting it to a factor
+stopifnot(
+  !anyNA(sligo$county),
+  all(sligo$county == "Sligo")
+)
+
+sligo$county <- factor(sligo$county)
+
+# Checking that all imported records are still present
+stopifnot(nrow(sligo) == nrow(raw))
+
+# Inspecting the updated structure, date range and prices
+str(sligo)
+range(sligo$sale_date)
+summary(sligo$price_eur)
+
+# Checking the category counts after conversion
+table(sligo$property_status, useNA = "ifany")
+table(sligo$not_full_market_price, useNA = "ifany")
+table(sligo$vat_exclusive, useNA = "ifany")
+
+# Recording the updated variable types
+variable_types <- data.frame(
+  variable = names(sligo),
+  data_type = vapply(
+    sligo,
+    function(x) paste(class(x), collapse = ", "),
+    character(1)
+  ),
+  row.names = NULL
+)
+
+print(variable_types, row.names = FALSE)
+
+# Saving the variable types for the report
+write.csv(
+  variable_types,
+  file.path(output_dir, "02_variable_types.csv"),
+  row.names = FALSE
+)
+
+cat(
+  "\nSection 2 completed. Records retained:",
+  nrow(sligo),
+  "\n"
+)
