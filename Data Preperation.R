@@ -355,3 +355,180 @@ writeLines(
   file.path(output_dir, "03_duplicate_policy.txt")
 )
 
+
+
+
+# SECTION 5: Creating the calendar variables
+
+# Checking that both datasets and the output folder are available
+stopifnot(
+  exists("sligo_clean"),
+  exists("sligo_all_records"),
+  exists("output_dir")
+)
+
+# Recording the current row counts for checking afterwards
+clean_count <- nrow(sligo_clean)
+all_records_count <- nrow(sligo_all_records)
+
+# Defining the calendar variables once for use in both datasets
+add_calendar_variables <- function(data) {
+  
+  # Checking the date format and missing dates
+  stopifnot(
+    inherits(data$sale_date, "Date"),
+    !anyNA(data$sale_date)
+  )
+  
+  # Extracting the sale year and month
+  data$year <- as.integer(format(data$sale_date, "%Y"))
+  data$month <- as.integer(format(data$sale_date, "%m"))
+  
+  # Checking that dates fall within the project scope
+  stopifnot(
+    all(data$year %in% 2019:2025),
+    all(data$month %in% 1:12)
+  )
+  
+  # Grouping months into calendar quarters
+  # Q1: January-March, Q2: April-June
+  # Q3: July-September, Q4: October-December
+  data$quarter <- factor(
+    (data$month - 1L) %/% 3L + 1L,
+    levels = 1:4,
+    labels = c("Q1", "Q2", "Q3", "Q4")
+  )
+  
+  # Grouping years into the three comparison periods
+  data$period <- factor(
+    ifelse(
+      data$year == 2019,
+      "2019",
+      ifelse(data$year <= 2021, "2020-2021", "2022-2025")
+    ),
+    levels = c("2019", "2020-2021", "2022-2025")
+  )
+  
+  # Checking that every record has a quarter and period
+  stopifnot(
+    !anyNA(data$quarter),
+    !anyNA(data$period)
+  )
+  
+  return(data)
+}
+
+# Adding the same variables to both datasets
+sligo_clean <- add_calendar_variables(sligo_clean)
+
+sligo_all_records <- add_calendar_variables(
+  sligo_all_records
+)
+
+# Checking that no records were removed
+stopifnot(
+  nrow(sligo_clean) == clean_count,
+  nrow(sligo_all_records) == all_records_count
+)
+
+# Inspecting the new variables
+head(
+  sligo_clean[
+    c("sale_date", "year", "month", "quarter", "period")
+  ],
+  10
+)
+
+str(
+  sligo_clean[
+    c("sale_date", "year", "month", "quarter", "period")
+  ]
+)
+
+# Counting the main-analysis records in each year
+year_counts <- data.frame(
+  year = 2019:2025,
+  records = as.integer(
+    table(factor(sligo_clean$year, levels = 2019:2025))
+  )
+)
+
+print(year_counts, row.names = FALSE)
+
+# Counting the records in each comparison period
+period_counts <- data.frame(
+  period = levels(sligo_clean$period),
+  records = as.integer(table(sligo_clean$period))
+)
+
+print(period_counts, row.names = FALSE)
+
+# Checking the number of records in each quarter by year
+quarter_counts <- with(
+  sligo_clean,
+  table(
+    year = factor(year, levels = 2019:2025),
+    quarter = quarter
+  )
+)
+
+print(quarter_counts)
+
+# Checking monthly coverage without assuming every day has a sale
+monthly_counts <- with(
+  sligo_clean,
+  table(
+    year = factor(year, levels = 2019:2025),
+    month = factor(month, levels = 1:12)
+  )
+)
+
+print(monthly_counts)
+
+# Counting year-month combinations with no recorded sales
+cat(
+  "\nYear-month combinations with no records:",
+  sum(monthly_counts == 0),
+  "\n"
+)
+
+# Checking that the summaries account for all retained records
+stopifnot(
+  sum(year_counts$records) == nrow(sligo_clean),
+  sum(period_counts$records) == nrow(sligo_clean),
+  sum(quarter_counts) == nrow(sligo_clean),
+  sum(monthly_counts) == nrow(sligo_clean)
+)
+
+# Saving the coverage summaries for the report
+write.csv(
+  year_counts,
+  file.path(output_dir, "04_year_counts.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  period_counts,
+  file.path(output_dir, "04_period_counts.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  as.data.frame(quarter_counts),
+  file.path(output_dir, "04_year_quarter_counts.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  as.data.frame(monthly_counts),
+  file.path(output_dir, "04_year_month_counts.csv"),
+  row.names = FALSE
+)
+
+# Displaying the final counts for this section
+cat(
+  "\nSection 5 completed.",
+  "\nMain-analysis records:", nrow(sligo_clean),
+  "\nSensitivity-check records:", nrow(sligo_all_records),
+  "\n"
+)
