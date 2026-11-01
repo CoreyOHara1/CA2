@@ -445,3 +445,279 @@ cat(
 )
 
 print(normality_charts)
+
+
+
+
+
+
+
+# SECTION 3: Testing recorded prices across periods
+
+# Checking that the required objects from Section 2 are available
+stopifnot(
+  exists("price_data"),
+  exists("output_dir"),
+  exists("figures_dir"),
+  exists("alpha"),
+  exists("normality_summary"),
+  nrow(price_data) == 5070
+)
+
+# Checking that the RQ1 variables are suitable for testing
+stopifnot(
+  is.numeric(price_data$price_eur),
+  is.factor(price_data$period),
+  !anyNA(price_data$price_eur),
+  !anyNA(price_data$period)
+)
+
+# Confirming the RQ1 hypothesis before testing
+cat(
+  "\nRQ1 hypothesis",
+  "\nH0: The recorded-price distributions are the same across 2019, 2020-2021 and 2022-2025.",
+  "\nH1: At least one period has a different recorded-price distribution.",
+  "\nTest: Kruskal-Wallis rank sum test.",
+  "\n"
+)
+
+# Running the Kruskal-Wallis test for RQ1
+rq1_test <- kruskal.test(
+  price_eur ~ period,
+  data = price_data
+)
+
+# Displaying the RQ1 test result
+cat("\nRQ1: Kruskal-Wallis rank sum test\n")
+print(rq1_test)
+
+# Checking that the test returned a valid result
+stopifnot(
+  inherits(rq1_test, "htest"),
+  is.finite(rq1_test$statistic),
+  is.finite(rq1_test$p.value)
+)
+
+# Calculating epsilon-squared from the Kruskal-Wallis statistic
+rq1_epsilon_squared <-
+  (rq1_test$statistic - length(unique(price_data$period)) + 1) /
+  (nrow(price_data) - length(unique(price_data$period)))
+
+# Displaying the RQ1 effect size
+cat(
+  "\nRQ1 epsilon-squared effect size:",
+  round(unname(rq1_epsilon_squared), 4),
+  "\n"
+)
+
+# Creating a compact table of RQ1 descriptive statistics
+rq1_descriptives <- do.call(
+  rbind,
+  lapply(
+    split(
+      price_data$price_eur,
+      price_data$period,
+      drop = TRUE
+    ),
+    function(prices) {
+      data.frame(
+        records = length(prices),
+        median_eur = median(prices),
+        mean_eur = mean(prices),
+        q1_eur = quantile(prices, 0.25),
+        q3_eur = quantile(prices, 0.75),
+        minimum_eur = min(prices),
+        maximum_eur = max(prices),
+        row.names = NULL
+      )
+    }
+  )
+)
+
+# Adding the period names to the descriptive table
+rq1_descriptives$period <- names(
+  split(
+    price_data$price_eur,
+    price_data$period,
+    drop = TRUE
+  )
+)
+
+# Reordering the descriptive table
+rq1_descriptives <- rq1_descriptives[
+  c("period", "records", "median_eur", "mean_eur", "q1_eur", "q3_eur", "minimum_eur", "maximum_eur")
+]
+
+# Displaying the RQ1 descriptive statistics
+cat("\nRQ1: Recorded-price descriptive statistics by period\n")
+print(rq1_descriptives, row.names = FALSE)
+
+# Saving the RQ1 descriptive statistics
+write.csv(
+  rq1_descriptives,
+  file.path(output_dir, "03_RQ1_price_descriptives_by_period.csv"),
+  row.names = FALSE
+)
+
+# Creating all pairwise period comparisons
+period_pairs <- combn(
+  levels(droplevels(price_data$period)),
+  2,
+  simplify = FALSE
+)
+
+# Running a Wilcoxon rank-sum test for each pair
+rq1_pairwise_results <- do.call(
+  rbind,
+  lapply(period_pairs, function(pair) {
+    
+    # Selecting the two periods being compared
+    pairwise_data <- price_data[
+      price_data$period %in% pair,
+    ]
+    
+    # Dropping unused factor levels
+    pairwise_data$period <-
+      droplevels(pairwise_data$period)
+    
+    # Running the pairwise test
+    pairwise_test <- wilcox.test(
+      price_eur ~ period,
+      data = pairwise_data,
+      alternative = "two.sided",
+      exact = FALSE
+    )
+    
+    data.frame(
+      comparison = paste(pair, collapse = " vs "),
+      W = unname(pairwise_test$statistic),
+      p_value = pairwise_test$p.value,
+      row.names = NULL
+    )
+  })
+)
+
+# Adjusting the pairwise p-values using Holm's method
+rq1_pairwise_results$p_value_holm <- p.adjust(
+  rq1_pairwise_results$p_value,
+  method = "holm"
+)
+
+# Identifying comparisons that remain significant after adjustment
+rq1_pairwise_results$significant_at_0.05 <-
+  rq1_pairwise_results$p_value_holm <= alpha
+
+# Displaying the RQ1 pairwise results
+cat("\nRQ1: Pairwise Wilcoxon rank-sum tests with Holm adjustment\n")
+print(rq1_pairwise_results, row.names = FALSE)
+
+# Saving the RQ1 test results
+rq1_results <- data.frame(
+  question = "RQ1",
+  test = "Kruskal-Wallis rank sum test",
+  statistic = unname(rq1_test$statistic),
+  df = unname(rq1_test$parameter),
+  p_value = rq1_test$p.value,
+  epsilon_squared = unname(rq1_epsilon_squared),
+  alpha = alpha,
+  decision = ifelse(
+    rq1_test$p.value <= alpha,
+    "Reject H0",
+    "Insufficient evidence to reject H0"
+  ),
+  row.names = NULL
+)
+
+write.csv(
+  rq1_results,
+  file.path(output_dir, "04_RQ1_kruskal_wallis_result.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  rq1_pairwise_results,
+  file.path(output_dir, "05_RQ1_pairwise_wilcoxon_results.csv"),
+  row.names = FALSE
+)
+
+
+# Creating the RQ1 price distribution chart
+
+# Opening a PNG file for the RQ1 chart
+png(
+  file.path(figures_dir, "06_RQ1_price_distributions_by_period.png"),
+  width = 2200,
+  height = 1300,
+  res = 180
+)
+
+# Preparing plotting limits based on all eligible prices
+price_limits <- range(price_data$price_eur) / 1000
+
+# Creating a boxplot of prices by period
+boxplot(
+  price_eur / 1000 ~ period,
+  data = price_data,
+  col = chart_colour,
+  border = "black",
+  horizontal = TRUE,
+  las = 1,
+  main = "Recorded prices by analytical period",
+  xlab = "Recorded price (EUR thousands)",
+  ylab = "Analytical period",
+  ylim = price_limits,
+  outline = FALSE
+)
+
+# Adding individual observations to show the full distribution
+stripchart(
+  price_eur / 1000 ~ period,
+  data = price_data,
+  method = "jitter",
+  vertical = FALSE,
+  pch = 16,
+  cex = 0.35,
+  col = adjustcolor("black", alpha.f = 0.15),
+  add = TRUE
+)
+
+# Closing the PNG file
+dev.off()
+
+
+# Checking that the RQ1 outputs were created 
+
+rq1_outputs <- file.path(
+  output_dir,
+  c(
+    "03_RQ1_price_descriptives_by_period.csv",
+    "04_RQ1_kruskal_wallis_result.csv",
+    "05_RQ1_pairwise_wilcoxon_results.csv"
+  )
+)
+
+rq1_chart <- file.path(
+  figures_dir,
+  "06_RQ1_price_distributions_by_period.png"
+)
+
+stopifnot(
+  all(file.exists(rq1_outputs)),
+  all(file.info(rq1_outputs)$size > 0),
+  file.exists(rq1_chart),
+  file.info(rq1_chart)$size > 0
+)
+
+# Displaying the completed section
+cat(
+  "\nSection 3 completed.",
+  "\nRQ1 Kruskal-Wallis statistic:", round(unname(rq1_test$statistic), 3),
+  "\nRQ1 p-value:", format.pval(rq1_test$p.value, digits = 4),
+  "\nRQ1 epsilon-squared:", round(unname(rq1_epsilon_squared), 4),
+  "\nRQ1 pairwise comparisons:", nrow(rq1_pairwise_results),
+  "\nRQ1 chart saved:", rq1_chart,
+  "\n"
+)
+
+print(rq1_outputs)
+print(rq1_chart)
