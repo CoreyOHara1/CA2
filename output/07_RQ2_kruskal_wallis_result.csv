@@ -1,0 +1,2 @@
+"question","test","records","statistic","df","p_value","eta_squared_H","alpha","decision_unadjusted","primary_holm_status"
+"RQ2","Kruskal-Wallis rank sum test",675,4.05892809905793,3,0.25517086402168,0.00157813427579424,0.05,"Insufficient evidence to reject H0","Pending adjustment across RQ1-RQ5"
