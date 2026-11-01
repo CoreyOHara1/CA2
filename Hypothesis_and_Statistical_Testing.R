@@ -178,3 +178,270 @@ cat("Sensitivity-check records:", nrow(categorical_data_all_records), "\n")
 cat("Significance level:", alpha, "\n")
 
 
+
+
+
+
+
+
+# SECTION 2: Checking price distributions before testing
+
+# Checking that the price datasets and output folders are available
+stopifnot(
+  exists("price_data"),
+  exists("quarter_data"),
+  exists("output_dir"),
+  exists("figures_dir"),
+  exists("alpha")
+)
+
+# Defining the coral orange used in the preparation charts
+chart_colour <- "#FF7F50"
+
+# Defining a function to check normality within each group
+check_normality <- function(data, group_variable, question) {
+  
+  # Checking that the required variables are available
+  stopifnot(
+    is.numeric(data$price_eur),
+    is.factor(data[[group_variable]]),
+    !anyNA(data$price_eur),
+    !anyNA(data[[group_variable]])
+  )
+  
+  # Splitting prices into the groups being compared
+  grouped_prices <- split(
+    data$price_eur,
+    data[[group_variable]],
+    drop = TRUE
+  )
+  
+  # Checking each group separately
+  normality_summary <- do.call(
+    rbind,
+    lapply(names(grouped_prices), function(group_name) {
+      
+      group_prices <- grouped_prices[[group_name]]
+      
+      # Checking that Shapiro-Wilk can be applied
+      stopifnot(
+        length(group_name) > 0,
+        length(group_prices) >= 3,
+        length(group_prices) <= 5000,
+        !anyNA(group_prices),
+        all(is.finite(group_prices)),
+        length(unique(group_prices)) > 1
+      )
+      
+      # Running the Shapiro-Wilk normality test
+      normality_test <- shapiro.test(group_prices)
+      
+      data.frame(
+        question = question,
+        group = group_name,
+        records = length(group_prices),
+        W = unname(normality_test$statistic),
+        p_value = normality_test$p.value,
+        row.names = NULL
+      )
+    })
+  )
+  
+  rownames(normality_summary) <- NULL
+  
+  return(normality_summary)
+}
+
+# Checking normality for the three comparison periods
+normality_summary <- check_normality(
+  price_data,
+  "period",
+  "RQ1"
+)
+
+cat("\nRQ1: Normality checks by period\n")
+print(normality_summary, row.names = FALSE)
+
+# Checking normality across quarters within 2025
+quarter_normality_summary <- check_normality(
+  quarter_data,
+  "quarter",
+  "RQ2"
+)
+
+cat("\nRQ2: Normality checks by quarter within 2025\n")
+print(quarter_normality_summary, row.names = FALSE)
+
+# Checking that every price group was checked
+stopifnot(
+  sum(normality_summary$records) == nrow(price_data),
+  sum(quarter_normality_summary$records) == nrow(quarter_data)
+)
+
+# Saving the normality results for the report
+write.csv(
+  normality_summary,
+  file.path(output_dir, "01_RQ1_normality_by_period.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  quarter_normality_summary,
+  file.path(output_dir, "02_RQ2_normality_by_quarter.csv"),
+  row.names = FALSE
+)
+
+
+# Creating the RQ1 normality charts 
+
+# Splitting eligible prices into the three periods
+period_prices <- split(
+  price_data$price_eur,
+  price_data$period,
+  drop = TRUE
+)
+
+# Opening a PNG file for the period diagnostic charts
+png(
+  file.path(figures_dir, "04_RQ1_period_normality.png"),
+  width = 2000,
+  height = 650 * length(period_prices),
+  res = 180
+)
+
+# Arranging one histogram and one Q-Q plot for each period
+par(
+  mfrow = c(length(period_prices), 2),
+  mar = c(4, 4, 3, 1),
+  las = 1
+)
+
+# Creating a histogram and Q-Q plot for each period
+for (period_name in names(period_prices)) {
+  
+  period_prices_in_eur_thousands <-
+    period_prices[[period_name]] / 1000
+  
+  hist(
+    period_prices_in_eur_thousands,
+    breaks = 30,
+    col = chart_colour,
+    border = "white",
+    main = paste(
+      period_name,
+      "prices; n =",
+      length(period_prices[[period_name]])
+    ),
+    xlab = "Recorded price (EUR thousands)",
+    ylab = "Records"
+  )
+  
+  qqnorm(
+    period_prices_in_eur_thousands,
+    main = paste(period_name, "normal Q-Q plot"),
+    xlab = "Normal quantile",
+    ylab = "Recorded price (EUR thousands)",
+    pch = 16,
+    col = chart_colour
+  )
+  
+  qqline(
+    period_prices_in_eur_thousands,
+    col = "black",
+    lwd = 2
+  )
+}
+
+# Closing the PNG file
+dev.off()
+
+
+# Creating the RQ2 normality charts 
+
+# Splitting eligible 2025 prices into the four quarters
+quarter_prices <- split(
+  quarter_data$price_eur,
+  quarter_data$quarter,
+  drop = TRUE
+)
+
+# Opening a PNG file for the quarter diagnostic charts
+png(
+  file.path(figures_dir, "05_RQ2_2025_quarter_normality.png"),
+  width = 2000,
+  height = 650 * length(quarter_prices),
+  res = 180
+)
+
+# Arranging one histogram and one Q-Q plot for each quarter
+par(
+  mfrow = c(length(quarter_prices), 2),
+  mar = c(4, 4, 3, 1),
+  las = 1
+)
+
+# Creating a histogram and Q-Q plot for each quarter
+for (quarter_name in names(quarter_prices)) {
+  
+  quarter_prices_in_eur_thousands <-
+    quarter_prices[[quarter_name]] / 1000
+  
+  hist(
+    quarter_prices_in_eur_thousands,
+    breaks = 30,
+    col = chart_colour,
+    border = "white",
+    main = paste(
+      quarter_name,
+      "2025 prices; n =",
+      length(quarter_prices[[quarter_name]])
+    ),
+    xlab = "Recorded price (EUR thousands)",
+    ylab = "Records"
+  )
+  
+  qqnorm(
+    quarter_prices_in_eur_thousands,
+    main = paste(quarter_name, "2025 normal Q-Q plot"),
+    xlab = "Normal quantile",
+    ylab = "Recorded price (EUR thousands)",
+    pch = 16,
+    col = chart_colour
+  )
+  
+  qqline(
+    quarter_prices_in_eur_thousands,
+    col = "black",
+    lwd = 2
+  )
+}
+
+# Closing the PNG file
+dev.off()
+
+
+# Checking that both diagnostic charts were created 
+
+normality_charts <- file.path(
+  figures_dir,
+  c(
+    "04_RQ1_period_normality.png",
+    "05_RQ2_2025_quarter_normality.png"
+  )
+)
+
+stopifnot(
+  all(file.exists(normality_charts)),
+  all(file.info(normality_charts)$size > 0)
+)
+
+# Displaying the completed section
+cat(
+  "\nSection 2 completed.",
+  "\nRQ1 price records checked:", nrow(price_data),
+  "\nRQ2 2025 price records checked:", nrow(quarter_data),
+  "\nNormality diagnostic charts saved:", length(normality_charts),
+  "\n"
+)
+
+print(normality_charts)
