@@ -1,0 +1,2 @@
+"question","test","alternative","records","earliest_sale_date","latest_sale_date","statistic_name","statistic","spearman_rho","direction","p_value","p_value_method","alpha","decision_unadjusted","primary_holm_status"
+"RQ3","Spearman rank correlation","two.sided",5070,2019-01-03,2025-12-23,"S",15294651852.1149,0.295847079319593,"Positive",5.98270667124214e-103,"Asymptotic approximation; exact = FALSE",0.05,"Reject H0 before primary Holm adjustment","Pending adjustment across RQ1-RQ5"

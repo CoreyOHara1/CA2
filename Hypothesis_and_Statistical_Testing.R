@@ -721,3 +721,416 @@ cat(
 
 print(rq1_outputs)
 print(rq1_chart)
+
+
+
+# Additional RQ1 chart: Zooming in on the main price distributions ----
+
+# Setting the visible price range in EUR thousands
+rq1_zoom_limit <- 600
+
+# Counting records above the visible range
+rq1_above_zoom <- sum(
+  price_data$price_eur > rq1_zoom_limit * 1000
+)
+
+# Saving a separate chart without overwriting the full-range version
+png(
+  file.path(
+    figures_dir,
+    "06b_RQ1_price_distributions_zoomed.png"
+  ),
+  width = 2200,
+  height = 1400,
+  res = 180
+)
+
+# Providing enough space for the period labels and explanatory note
+par(
+  mar = c(6, 8, 4, 2),
+  las = 1
+)
+
+# Calculating boxplots using all records, with a zoomed price axis
+boxplot(
+  price_eur / 1000 ~ period,
+  data = price_data,
+  horizontal = TRUE,
+  col = "#FF7F50",
+  border = "black",
+  outline = FALSE,
+  ylim = c(0, rq1_zoom_limit),
+  main = "Recorded prices by analytical period",
+  xlab = "Recorded price (EUR thousands)",
+  ylab = ""
+)
+
+# Adding individual observations within the plotting window
+set.seed(123)
+
+stripchart(
+  price_eur / 1000 ~ period,
+  data = price_data,
+  method = "jitter",
+  jitter = 0.12,
+  vertical = FALSE,
+  pch = 16,
+  cex = 0.35,
+  col = adjustcolor("black", alpha.f = 0.15),
+  add = TRUE
+)
+
+# Explaining the zoom without suggesting records were deleted
+mtext(
+  paste0(
+    "Zoomed to EUR 600,000; ",
+    rq1_above_zoom,
+    " records above this range are not shown. All records remain in the analysis."
+  ),
+  side = 1,
+  line = 4,
+  cex = 0.75
+)
+
+dev.off()
+
+
+
+
+
+
+
+
+# SECTION 4: Testing recorded prices across 2025 quarters
+
+# Checking that the required datasets and folders are available
+stopifnot(
+  exists("quarter_data"),
+  exists("output_dir"),
+  exists("figures_dir"),
+  exists("alpha"),
+  nrow(quarter_data) == 675,
+  is.numeric(quarter_data$price_eur),
+  is.factor(quarter_data$quarter),
+  !anyNA(quarter_data$price_eur),
+  !anyNA(quarter_data$quarter),
+  all(is.finite(quarter_data$price_eur))
+)
+
+# Confirming that all four quarters contain records
+stopifnot(
+  setequal(
+    levels(droplevels(quarter_data$quarter)),
+    c("Q1", "Q2", "Q3", "Q4")
+  )
+)
+
+# Confirming the research question and hypotheses
+cat(
+  "\nRQ2: Recorded prices across quarters within 2025",
+  "\nH0: The recorded-price distributions are identical across Q1-Q4.",
+  "\nH1: At least one quarter has a different distribution.",
+  "\nTest: Kruskal-Wallis rank sum test.",
+  "\nThis tests differences within 2025, not seasonality across years.",
+  "\n"
+)
+
+
+# Running the primary RQ2 test 
+
+rq2_test <- kruskal.test(
+  price_eur ~ quarter,
+  data = quarter_data
+)
+
+cat("\nRQ2: Kruskal-Wallis test\n")
+print(rq2_test)
+
+# Checking that the test returned valid results
+stopifnot(
+  inherits(rq2_test, "htest"),
+  is.finite(rq2_test$statistic),
+  is.finite(rq2_test$p.value)
+)
+
+# Calculating eta-squared based on the H statistic
+rq2_n <- nrow(quarter_data)
+rq2_k <- nlevels(droplevels(quarter_data$quarter))
+
+rq2_eta_squared_H_raw <- (
+  unname(rq2_test$statistic) - rq2_k + 1
+) / (rq2_n - rq2_k)
+
+# Reporting zero if the bias-corrected estimate is negative
+rq2_eta_squared_H <- max(0, rq2_eta_squared_H_raw)
+
+cat(
+  "\nRQ2 eta-squared based on H:",
+  round(rq2_eta_squared_H, 4),
+  "\n"
+)
+
+
+# Summarising recorded prices by quarter 
+
+rq2_grouped_prices <- split(
+  quarter_data$price_eur,
+  quarter_data$quarter,
+  drop = TRUE
+)
+
+rq2_descriptives <- do.call(
+  rbind,
+  lapply(names(rq2_grouped_prices), function(quarter_name) {
+    
+    prices <- rq2_grouped_prices[[quarter_name]]
+    
+    data.frame(
+      quarter = quarter_name,
+      records = length(prices),
+      median_eur = median(prices),
+      mean_eur = mean(prices),
+      q1_eur = unname(quantile(prices, 0.25)),
+      q3_eur = unname(quantile(prices, 0.75)),
+      iqr_eur = IQR(prices),
+      minimum_eur = min(prices),
+      maximum_eur = max(prices),
+      row.names = NULL
+    )
+  })
+)
+
+cat("\nRQ2: Descriptive statistics by 2025 quarter\n")
+print(rq2_descriptives, row.names = FALSE)
+
+stopifnot(
+  sum(rq2_descriptives$records) == nrow(quarter_data)
+)
+
+
+# Examining pairwise quarter comparisons 
+
+# Treating these as supplementary comparisons
+# Their Holm adjustment is separate from the five primary tests
+rq2_quarter_pairs <- combn(
+  names(rq2_grouped_prices),
+  2,
+  simplify = FALSE
+)
+
+rq2_pairwise_results <- do.call(
+  rbind,
+  lapply(rq2_quarter_pairs, function(pair) {
+    
+    pairwise_test <- wilcox.test(
+      x = rq2_grouped_prices[[pair[1]]],
+      y = rq2_grouped_prices[[pair[2]]],
+      alternative = "two.sided",
+      exact = FALSE
+    )
+    
+    data.frame(
+      comparison = paste(pair, collapse = " vs "),
+      W = unname(pairwise_test$statistic),
+      p_value = pairwise_test$p.value,
+      row.names = NULL
+    )
+  })
+)
+
+# Adjusting across the six quarter comparisons
+rq2_pairwise_results$p_value_holm <- p.adjust(
+  rq2_pairwise_results$p_value,
+  method = "holm"
+)
+
+rq2_pairwise_results$significant_at_0.05 <-
+  rq2_pairwise_results$p_value_holm <= alpha
+
+cat("\nRQ2: Supplementary pairwise Wilcoxon tests\n")
+print(rq2_pairwise_results, row.names = FALSE)
+
+
+# Saving the statistical results 
+
+rq2_results <- data.frame(
+  question = "RQ2",
+  test = "Kruskal-Wallis rank sum test",
+  records = rq2_n,
+  statistic = unname(rq2_test$statistic),
+  df = unname(rq2_test$parameter),
+  p_value = rq2_test$p.value,
+  eta_squared_H = rq2_eta_squared_H,
+  alpha = alpha,
+  decision_unadjusted = ifelse(
+    rq2_test$p.value <= alpha,
+    "Reject H0 before primary Holm adjustment",
+    "Insufficient evidence to reject H0"
+  ),
+  primary_holm_status = "Pending adjustment across RQ1-RQ5",
+  row.names = NULL
+)
+
+write.csv(
+  rq2_descriptives,
+  file.path(output_dir, "06_RQ2_price_descriptives_by_quarter.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  rq2_results,
+  file.path(output_dir, "07_RQ2_kruskal_wallis_result.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  rq2_pairwise_results,
+  file.path(output_dir, "08_RQ2_pairwise_wilcoxon_results.csv"),
+  row.names = FALSE
+)
+
+
+# Creating full-range and zoomed quarter charts 
+
+# Using the same zoom limit as the additional RQ1 chart
+rq2_zoom_limit <- 600
+
+rq2_above_zoom <- sum(
+  quarter_data$price_eur > rq2_zoom_limit * 1000
+)
+
+rq2_chart <- file.path(
+  figures_dir,
+  "07_RQ2_2025_price_distributions_by_quarter.png"
+)
+
+png(
+  rq2_chart,
+  width = 2400,
+  height = 2000,
+  res = 180
+)
+
+par(
+  mfrow = c(2, 1),
+  mar = c(5, 6, 4, 2),
+  las = 1
+)
+
+# Using a fixed seed for reproducible jitter
+set.seed(123)
+
+# Plotting the full range and a clearly labelled zoomed view
+for (view in c("full", "zoom")) {
+  
+  if (view == "full") {
+    price_axis_limits <- c(
+      0,
+      max(quarter_data$price_eur) / 1000
+    )
+    chart_title <- "2025 recorded prices by quarter: full range"
+  } else {
+    price_axis_limits <- c(0, rq2_zoom_limit)
+    chart_title <- "2025 recorded prices by quarter: zoomed view"
+  }
+  
+  # Calculating each boxplot from all eligible records
+  boxplot(
+    price_eur / 1000 ~ quarter,
+    data = quarter_data,
+    horizontal = TRUE,
+    col = "#FF7F50",
+    border = "black",
+    outline = FALSE,
+    ylim = price_axis_limits,
+    main = chart_title,
+    xlab = "Recorded price (EUR thousands)",
+    ylab = ""
+  )
+  
+  stripchart(
+    price_eur / 1000 ~ quarter,
+    data = quarter_data,
+    method = "jitter",
+    jitter = 0.12,
+    vertical = FALSE,
+    pch = 16,
+    cex = 0.4,
+    col = adjustcolor("black", alpha.f = 0.2),
+    add = TRUE
+  )
+  
+  if (view == "zoom") {
+    mtext(
+      paste0(
+        "Zoomed to EUR 600,000; ",
+        rq2_above_zoom,
+        " records above this range are not shown. All records remain in the analysis."
+      ),
+      side = 1,
+      line = 3.8,
+      cex = 0.7
+    )
+  }
+}
+
+dev.off()
+
+
+# Checking that the outputs were created
+
+rq2_outputs <- file.path(
+  output_dir,
+  c(
+    "06_RQ2_price_descriptives_by_quarter.csv",
+    "07_RQ2_kruskal_wallis_result.csv",
+    "08_RQ2_pairwise_wilcoxon_results.csv"
+  )
+)
+
+stopifnot(
+  all(file.exists(rq2_outputs)),
+  all(file.info(rq2_outputs)$size > 0),
+  file.exists(rq2_chart),
+  file.info(rq2_chart)$size > 0
+)
+
+cat(
+  "\nSection 4 completed.",
+  "\nRQ2 records:", rq2_n,
+  "\nKruskal-Wallis statistic:",
+  round(unname(rq2_test$statistic), 3),
+  "\nDegrees of freedom:", unname(rq2_test$parameter),
+  "\nUnadjusted p-value:",
+  format.pval(rq2_test$p.value, digits = 4),
+  "\nEta-squared based on H:",
+  round(rq2_eta_squared_H, 4),
+  "\nSupplementary pairwise comparisons:",
+  nrow(rq2_pairwise_results),
+  "\nPrimary Holm adjustment: pending RQ1-RQ5.",
+  "\n"
+)
+
+print(rq2_outputs)
+print(rq2_chart)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
