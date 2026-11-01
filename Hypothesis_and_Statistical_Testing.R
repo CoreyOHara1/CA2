@@ -1123,7 +1123,262 @@ print(rq2_chart)
 
 
 
+# SECTION 5: Testing the association between sale date and price
 
+# Checking that the required datasets and folders are available
+stopifnot(
+  exists("price_data"),
+  exists("output_dir"),
+  exists("figures_dir"),
+  exists("alpha"),
+  nrow(price_data) == 5070,
+  inherits(price_data$sale_date, "Date"),
+  is.numeric(price_data$price_eur),
+  !anyNA(price_data$sale_date),
+  !anyNA(price_data$price_eur),
+  all(is.finite(as.numeric(price_data$sale_date))),
+  all(is.finite(price_data$price_eur)),
+  length(unique(price_data$sale_date)) > 1,
+  length(unique(price_data$price_eur)) > 1
+)
+
+# Checking that the dates fall within the research period
+stopifnot(
+  all(price_data$sale_date >= as.Date("2019-01-01")),
+  all(price_data$sale_date <= as.Date("2025-12-31"))
+)
+
+# Confirming the research question and hypotheses
+cat(
+  "\nRQ3: Sale date and recorded price, 2019-2025",
+  "\nH0: The population Spearman rank correlation is zero.",
+  "\nH1: The population Spearman rank correlation is not zero.",
+  "\nTest: Two-sided Spearman rank correlation.",
+  "\n"
+)
+
+
+# Running the primary RQ3 test 
+
+# Converting dates to numeric days while retaining chronological order
+rq3_date_numeric <- as.numeric(price_data$sale_date)
+
+# Using an approximate p-value because dates and prices contain ties
+rq3_test <- cor.test(
+  x = rq3_date_numeric,
+  y = price_data$price_eur,
+  method = "spearman",
+  alternative = "two.sided",
+  exact = FALSE
+)
+
+cat("\nRQ3: Spearman rank correlation\n")
+print(rq3_test)
+
+# Extracting Spearman's rho
+rq3_rho <- unname(rq3_test$estimate)
+
+# Checking that the test returned valid results
+stopifnot(
+  inherits(rq3_test, "htest"),
+  is.finite(rq3_rho),
+  rq3_rho >= -1,
+  rq3_rho <= 1,
+  is.finite(rq3_test$statistic),
+  is.finite(rq3_test$p.value),
+  rq3_test$p.value >= 0,
+  rq3_test$p.value <= 1
+)
+
+# Describing the direction without assuming statistical significance
+rq3_direction <- if (rq3_rho > 0) {
+  "Positive"
+} else if (rq3_rho < 0) {
+  "Negative"
+} else {
+  "Zero"
+}
+
+cat(
+  "\nRQ3 records:", nrow(price_data),
+  "\nSpearman rho:", round(rq3_rho, 4),
+  "\nDirection:", rq3_direction,
+  "\nUnadjusted p-value:",
+  format.pval(rq3_test$p.value, digits = 4),
+  "\nPrimary Holm adjustment: pending RQ1-RQ5.",
+  "\n"
+)
+
+
+# Saving the primary test result 
+
+# Spearman's rho is itself the effect-size measure
+rq3_results <- data.frame(
+  question = "RQ3",
+  test = "Spearman rank correlation",
+  alternative = "two.sided",
+  records = nrow(price_data),
+  earliest_sale_date = min(price_data$sale_date),
+  latest_sale_date = max(price_data$sale_date),
+  statistic_name = names(rq3_test$statistic),
+  statistic = unname(rq3_test$statistic),
+  spearman_rho = rq3_rho,
+  direction = rq3_direction,
+  p_value = rq3_test$p.value,
+  p_value_method = "Asymptotic approximation; exact = FALSE",
+  alpha = alpha,
+  decision_unadjusted = ifelse(
+    rq3_test$p.value <= alpha,
+    "Reject H0 before primary Holm adjustment",
+    "Insufficient evidence to reject H0"
+  ),
+  primary_holm_status = "Pending adjustment across RQ1-RQ5",
+  row.names = NULL
+)
+
+rq3_output <- file.path(
+  output_dir,
+  "09_RQ3_spearman_correlation_result.csv"
+)
+
+write.csv(
+  rq3_results,
+  rq3_output,
+  row.names = FALSE
+)
+
+
+# Creating full-range and zoomed scatterplots 
+
+# Using the same zoom limit as the earlier price charts
+rq3_zoom_limit <- 600
+
+rq3_above_zoom <- sum(
+  price_data$price_eur > rq3_zoom_limit * 1000
+)
+
+# Defining annual tick marks for the date axis
+rq3_year_ticks <- seq(
+  from = as.Date("2019-01-01"),
+  to = as.Date("2025-01-01"),
+  by = "year"
+)
+
+rq3_chart <- file.path(
+  figures_dir,
+  "08_RQ3_sale_date_and_recorded_price.png"
+)
+
+png(
+  rq3_chart,
+  width = 2400,
+  height = 2000,
+  res = 180
+)
+
+par(
+  mfrow = c(2, 1),
+  mar = c(5, 6, 4, 2),
+  las = 1
+)
+
+# Showing both the complete range and the main price range
+for (view in c("full", "zoom")) {
+  
+  if (view == "full") {
+    
+    rq3_price_limits <- c(
+      0,
+      max(price_data$price_eur) / 1000
+    )
+    
+    rq3_chart_title <-
+      "Sale date and recorded price, 2019-2025: full range"
+    
+  } else {
+    
+    rq3_price_limits <- c(0, rq3_zoom_limit)
+    
+    rq3_chart_title <-
+      "Sale date and recorded price, 2019-2025: zoomed view"
+  }
+  
+  # Plotting the original dates and prices without jitter or filtering
+  plot(
+    x = price_data$sale_date,
+    y = price_data$price_eur / 1000,
+    xlim = c(
+      as.Date("2019-01-01"),
+      as.Date("2025-12-31")
+    ),
+    ylim = rq3_price_limits,
+    xaxt = "n",
+    pch = 16,
+    cex = 0.45,
+    col = adjustcolor("#FF7F50", alpha.f = 0.35),
+    main = rq3_chart_title,
+    xlab = "Sale date",
+    ylab = "Recorded price (EUR thousands)"
+  )
+  
+  axis.Date(
+    side = 1,
+    at = rq3_year_ticks,
+    format = "%Y"
+  )
+  
+  # Displaying rho without implying causation
+  legend(
+    "topleft",
+    legend = paste0(
+      "Spearman rho = ",
+      round(rq3_rho, 3),
+      "; n = ",
+      nrow(price_data)
+    ),
+    bty = "n",
+    cex = 0.85
+  )
+  
+  if (view == "zoom") {
+    
+    mtext(
+      paste0(
+        "Zoomed to EUR 600,000; ",
+        rq3_above_zoom,
+        " records above this range are not shown. All records remain in the test."
+      ),
+      side = 1,
+      line = 3.8,
+      cex = 0.7
+    )
+  }
+}
+
+dev.off()
+
+
+# Checking that the outputs were created 
+
+stopifnot(
+  file.exists(rq3_output),
+  file.info(rq3_output)$size > 0,
+  file.exists(rq3_chart),
+  file.info(rq3_chart)$size > 0
+)
+
+cat(
+  "\nSection 5 completed.",
+  "\nRQ3 records:", nrow(price_data),
+  "\nSpearman rho:", round(rq3_rho, 4),
+  "\nUnadjusted p-value:",
+  format.pval(rq3_test$p.value, digits = 4),
+  "\nPrimary Holm adjustment: pending RQ1-RQ5.",
+  "\n"
+)
+
+print(rq3_output)
+print(rq3_chart)
 
 
 
