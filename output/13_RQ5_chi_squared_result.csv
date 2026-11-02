@@ -1,0 +1,2 @@
+"question","test","records","statistic","df","p_value","cramers_v","minimum_expected_count","cells_expected_below_5","alpha","decision_unadjusted","primary_holm_status"
+"RQ5","Pearson chi-squared test of independence",5957,22.6583898031455,2,1.20169199966367e-05,0.0616738019619194,31.9474567735437,0,0.05,"Reject H0 before primary Holm adjustment","Pending adjustment across RQ1-RQ5"
