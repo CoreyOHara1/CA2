@@ -1728,3 +1728,680 @@ cat(
 print(rq4_outputs)
 print(rq4_chart)
 
+
+
+
+
+
+
+
+
+
+# SECTION 7: Testing period and not-full-market-price status
+
+# Checking that the required dataset and folders are available
+stopifnot(
+  exists("categorical_data"),
+  exists("output_dir"),
+  exists("figures_dir"),
+  exists("alpha"),
+  nrow(categorical_data) == 5957,
+  is.factor(categorical_data$period),
+  is.factor(categorical_data$not_full_market_price),
+  !anyNA(categorical_data$period),
+  !anyNA(categorical_data$not_full_market_price)
+)
+
+# Checking that the three analytical periods are present
+stopifnot(
+  setequal(
+    levels(droplevels(categorical_data$period)),
+    c("2019", "2020-2021", "2022-2025")
+  )
+)
+
+# Checking that the flag contains the expected No and Yes categories
+stopifnot(
+  setequal(
+    levels(droplevels(categorical_data$not_full_market_price)),
+    c("No", "Yes")
+  )
+)
+
+# Confirming the research question and hypotheses
+cat(
+  "\nRQ5: Analytical period and not-full-market-price status",
+  "\nH0: The proportion flagged Yes is the same across periods.",
+  "\nH1: At least one period has a different proportion flagged Yes.",
+  "\nTest: Pearson chi-squared test of independence.",
+  "\n"
+)
+
+
+# Creating the observed frequency table 
+
+# Keeping periods in chronological order
+rq5_period <- factor(
+  categorical_data$period,
+  levels = c("2019", "2020-2021", "2022-2025")
+)
+
+# Keeping the flag categories in a consistent order
+rq5_market_status <- factor(
+  categorical_data$not_full_market_price,
+  levels = c("No", "Yes")
+)
+
+rq5_table <- table(
+  period = rq5_period,
+  not_full_market_price = rq5_market_status
+)
+
+# Checking that all records are included and margins are positive
+stopifnot(
+  sum(rq5_table) == nrow(categorical_data),
+  all(rowSums(rq5_table) > 0),
+  all(colSums(rq5_table) > 0)
+)
+
+cat("\nRQ5: Observed counts, including totals\n")
+print(addmargins(rq5_table))
+
+
+
+
+# Calculating percentages within each period 
+
+# Each row sums to 100%
+rq5_percentages <- prop.table(
+  rq5_table,
+  margin = 1
+) * 100
+
+cat("\nRQ5: Flag percentages within each period\n")
+print(round(rq5_percentages, 2))
+
+
+# Checking expected counts before testing 
+
+rq5_expected_counts <- outer(
+  rowSums(rq5_table),
+  colSums(rq5_table)
+) / sum(rq5_table)
+
+dimnames(rq5_expected_counts) <- dimnames(rq5_table)
+
+cat("\nRQ5: Expected counts under independence\n")
+print(round(rq5_expected_counts, 2))
+
+cat(
+  "\nMinimum expected count:",
+  round(min(rq5_expected_counts), 2),
+  "\nCells with expected counts below 5:",
+  sum(rq5_expected_counts < 5),
+  "\n"
+)
+
+# Using the same conservative check as Section 6
+# If this stops, review the expected counts before proceeding
+if (any(rq5_expected_counts < 5)) {
+  stop(
+    paste(
+      "At least one expected count is below 5.",
+      "Review the table before using the planned Pearson approximation."
+    )
+  )
+}
+
+
+# Running the primary RQ5 test 
+
+rq5_test <- chisq.test(
+  rq5_table,
+  correct = FALSE
+)
+
+cat("\nRQ5: Pearson chi-squared test\n")
+print(rq5_test)
+
+# Checking that the test returned valid results
+stopifnot(
+  inherits(rq5_test, "htest"),
+  is.finite(rq5_test$statistic),
+  is.finite(rq5_test$p.value),
+  rq5_test$p.value >= 0,
+  rq5_test$p.value <= 1
+)
+
+
+# Calculating Cramer's V 
+
+rq5_n <- sum(rq5_table)
+
+rq5_cramers_v <- sqrt(
+  unname(rq5_test$statistic) /
+    (
+      rq5_n *
+        min(
+          nrow(rq5_table) - 1,
+          ncol(rq5_table) - 1
+        )
+    )
+)
+
+cat(
+  "\nRQ5 Cramer's V:",
+  round(rq5_cramers_v, 4),
+  "\n"
+)
+
+
+# Preparing a detailed cell-level table 
+
+rq5_cell_summary <- as.data.frame(
+  rq5_table,
+  responseName = "observed_count",
+  stringsAsFactors = FALSE
+)
+
+# Table conversion and vectorisation use the same cell order
+rq5_cell_summary$within_period_percent <-
+  as.vector(rq5_percentages)
+
+rq5_cell_summary$expected_count <-
+  as.vector(rq5_test$expected)
+
+rq5_cell_summary$standardised_residual <-
+  as.vector(rq5_test$stdres)
+
+cat("\nRQ5: Cell-level summary\n")
+print(rq5_cell_summary, row.names = FALSE)
+
+
+# Saving the primary test result 
+
+rq5_results <- data.frame(
+  question = "RQ5",
+  test = "Pearson chi-squared test of independence",
+  records = rq5_n,
+  statistic = unname(rq5_test$statistic),
+  df = unname(rq5_test$parameter),
+  p_value = rq5_test$p.value,
+  cramers_v = rq5_cramers_v,
+  minimum_expected_count = min(rq5_test$expected),
+  cells_expected_below_5 = sum(rq5_test$expected < 5),
+  alpha = alpha,
+  decision_unadjusted = ifelse(
+    rq5_test$p.value <= alpha,
+    "Reject H0 before primary Holm adjustment",
+    "Insufficient evidence to reject H0"
+  ),
+  primary_holm_status = "Pending adjustment across RQ1-RQ5",
+  row.names = NULL
+)
+
+write.csv(
+  rq5_cell_summary,
+  file.path(
+    output_dir,
+    "12_RQ5_not_full_market_price_by_period.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  rq5_results,
+  file.path(output_dir, "13_RQ5_chi_squared_result.csv"),
+  row.names = FALSE
+)
+
+
+# Creating the percentage chart 
+
+# Plotting the Yes proportion directly for a clear comparison
+rq5_yes_percentages <- rq5_percentages[, "Yes"]
+
+rq5_chart <- file.path(
+  figures_dir,
+  "10_RQ5_not_full_market_price_by_period.png"
+)
+
+png(
+  rq5_chart,
+  width = 2200,
+  height = 1500,
+  res = 180
+)
+
+par(
+  mar = c(6, 6, 5, 2),
+  las = 1
+)
+
+# Starting the percentage axis at zero
+rq5_chart_upper <- min(
+  100,
+  max(10, ceiling(max(rq5_yes_percentages) * 1.25 / 5) * 5)
+)
+
+rq5_bar_positions <- barplot(
+  rq5_yes_percentages,
+  col = "#FF7F50",
+  border = "white",
+  ylim = c(0, rq5_chart_upper),
+  main = "Records flagged as not full market price by period",
+  xlab = "Analytical period",
+  ylab = "Records flagged Yes within period (%)",
+  names.arg = rownames(rq5_table),
+  cex.names = 0.95
+)
+
+# Adding percentage labels above the bars
+text(
+  x = rq5_bar_positions,
+  y = rq5_yes_percentages,
+  labels = paste0(
+    formatC(
+      rq5_yes_percentages,
+      format = "f",
+      digits = 1
+    ),
+    "%"
+  ),
+  pos = 3,
+  cex = 0.95
+)
+
+# Reporting denominators so unequal period totals remain clear
+mtext(
+  paste0(
+    "Period totals: ",
+    paste(
+      paste0(
+        rownames(rq5_table),
+        " (n = ",
+        rowSums(rq5_table),
+        ")"
+      ),
+      collapse = "; "
+    )
+  ),
+  side = 1,
+  line = 4,
+  cex = 0.75
+)
+
+dev.off()
+
+
+# Checking that the outputs were created 
+
+rq5_outputs <- file.path(
+  output_dir,
+  c(
+    "12_RQ5_not_full_market_price_by_period.csv",
+    "13_RQ5_chi_squared_result.csv"
+  )
+)
+
+stopifnot(
+  all(file.exists(rq5_outputs)),
+  all(file.info(rq5_outputs)$size > 0),
+  file.exists(rq5_chart),
+  file.info(rq5_chart)$size > 0
+)
+
+cat(
+  "\nSection 7 completed.",
+  "\nRQ5 records:", rq5_n,
+  "\nChi-squared statistic:",
+  round(unname(rq5_test$statistic), 3),
+  "\nDegrees of freedom:", unname(rq5_test$parameter),
+  "\nUnadjusted p-value:",
+  format.pval(rq5_test$p.value, digits = 4),
+  "\nCramer's V:", round(rq5_cramers_v, 4),
+  "\nMinimum expected count:",
+  round(min(rq5_test$expected), 2),
+  "\nPrimary Holm adjustment: pending RQ1-RQ5.",
+  "\n"
+)
+
+print(rq5_outputs)
+print(rq5_chart)
+
+
+
+
+
+
+
+
+
+# SECTION 8: Adjusting the five primary tests using Holm's method
+
+# Checking that the five primary test objects are available
+primary_test_names <- c(
+  "rq1_test",
+  "rq2_test",
+  "rq3_test",
+  "rq4_test",
+  "rq5_test"
+)
+
+stopifnot(
+  all(
+    vapply(
+      primary_test_names,
+      exists,
+      logical(1),
+      inherits = TRUE
+    )
+  ),
+  exists("price_data"),
+  exists("quarter_data"),
+  exists("categorical_data"),
+  exists("output_dir"),
+  exists("alpha"),
+  is.numeric(alpha),
+  length(alpha) == 1,
+  is.finite(alpha),
+  alpha > 0,
+  alpha < 1
+)
+
+# Collecting the primary tests in research-question order
+primary_tests <- list(
+  RQ1 = rq1_test,
+  RQ2 = rq2_test,
+  RQ3 = rq3_test,
+  RQ4 = rq4_test,
+  RQ5 = rq5_test
+)
+
+# Checking that each object contains a hypothesis-test result
+stopifnot(
+  all(
+    vapply(
+      primary_tests,
+      function(test) inherits(test, "htest"),
+      logical(1)
+    )
+  )
+)
+
+cat(
+  "\nPrimary multiple-testing adjustment",
+  "\nFamily: The five primary tests for RQ1-RQ5.",
+  "\nMethod: Holm.",
+  "\nSignificance level:", alpha,
+  "\nPairwise and normality-test p-values are not included.",
+  "\n"
+)
+
+
+# Extracting the original p-values 
+
+primary_p_values <- vapply(
+  primary_tests,
+  function(test) unname(test$p.value),
+  numeric(1)
+)
+
+# Checking that all five p-values are valid
+stopifnot(
+  length(primary_p_values) == 5,
+  !anyNA(primary_p_values),
+  all(is.finite(primary_p_values)),
+  all(primary_p_values >= 0),
+  all(primary_p_values <= 1)
+)
+
+# Adjusting once across the five primary tests
+primary_p_values_holm <- p.adjust(
+  primary_p_values,
+  method = "holm"
+)
+
+# Checking that the adjusted values are valid
+stopifnot(
+  length(primary_p_values_holm) == 5,
+  all(is.finite(primary_p_values_holm)),
+  all(primary_p_values_holm >= 0),
+  all(primary_p_values_holm <= 1),
+  all(primary_p_values_holm >= primary_p_values)
+)
+
+
+# Preparing consistently labelled effect sizes 
+
+# Correcting the earlier terminology:
+# (H - k + 1) / (n - k) is eta-squared based on H
+
+rq1_k_primary <- nlevels(droplevels(price_data$period))
+rq2_k_primary <- nlevels(droplevels(quarter_data$quarter))
+
+rq1_eta_squared_H_primary <- max(
+  0,
+  (
+    unname(rq1_test$statistic) - rq1_k_primary + 1
+  ) / (
+    nrow(price_data) - rq1_k_primary
+  )
+)
+
+rq2_eta_squared_H_primary <- max(
+  0,
+  (
+    unname(rq2_test$statistic) - rq2_k_primary + 1
+  ) / (
+    nrow(quarter_data) - rq2_k_primary
+  )
+)
+
+# Calculating Cramer's V from the tested contingency tables
+rq4_cramers_v_primary <- sqrt(
+  unname(rq4_test$statistic) /
+    (
+      sum(rq4_test$observed) *
+        min(dim(rq4_test$observed) - 1)
+    )
+)
+
+rq5_cramers_v_primary <- sqrt(
+  unname(rq5_test$statistic) /
+    (
+      sum(rq5_test$observed) *
+        min(dim(rq5_test$observed) - 1)
+    )
+)
+
+
+# Creating the final primary-results table
+
+primary_results <- data.frame(
+  question = names(primary_tests),
+  
+  research_question = c(
+    "Recorded prices across analytical periods",
+    "Recorded prices across quarters within 2025",
+    "Sale date and recorded price, 2019-2025",
+    "Analytical period and property status",
+    "Analytical period and not-full-market-price status"
+  ),
+  
+  test = c(
+    "Kruskal-Wallis rank sum test",
+    "Kruskal-Wallis rank sum test",
+    "Two-sided Spearman rank correlation",
+    "Pearson chi-squared test of independence",
+    "Pearson chi-squared test of independence"
+  ),
+  
+  records = c(
+    nrow(price_data),
+    nrow(quarter_data),
+    nrow(price_data),
+    sum(rq4_test$observed),
+    sum(rq5_test$observed)
+  ),
+  
+  statistic_name = c(
+    "H",
+    "H",
+    "S",
+    "X-squared",
+    "X-squared"
+  ),
+  
+  statistic = vapply(
+    primary_tests,
+    function(test) unname(test$statistic),
+    numeric(1)
+  ),
+  
+  df = c(
+    unname(rq1_test$parameter),
+    unname(rq2_test$parameter),
+    NA_real_,
+    unname(rq4_test$parameter),
+    unname(rq5_test$parameter)
+  ),
+  
+  effect_size_name = c(
+    "Eta-squared based on H",
+    "Eta-squared based on H",
+    "Spearman rho",
+    "Cramer's V",
+    "Cramer's V"
+  ),
+  
+  effect_size = c(
+    rq1_eta_squared_H_primary,
+    rq2_eta_squared_H_primary,
+    unname(rq3_test$estimate),
+    rq4_cramers_v_primary,
+    rq5_cramers_v_primary
+  ),
+  
+  p_value = unname(primary_p_values),
+  p_value_holm = unname(primary_p_values_holm),
+  adjustment_method = "Holm across five primary tests",
+  alpha = alpha,
+  row.names = NULL,
+  stringsAsFactors = FALSE
+)
+
+# Recording the original and final decisions separately
+primary_results$decision_unadjusted <- ifelse(
+  primary_results$p_value <= alpha,
+  "Reject H0",
+  "Insufficient evidence to reject H0"
+)
+
+primary_results$decision_holm <- ifelse(
+  primary_results$p_value_holm <= alpha,
+  "Reject H0",
+  "Insufficient evidence to reject H0"
+)
+
+primary_results$decision_changed <-
+  primary_results$decision_unadjusted !=
+  primary_results$decision_holm
+
+# Checking the completed table
+stopifnot(
+  nrow(primary_results) == 5,
+  identical(
+    primary_results$question,
+    c("RQ1", "RQ2", "RQ3", "RQ4", "RQ5")
+  ),
+  all(is.finite(primary_results$effect_size)),
+  !anyNA(primary_results$p_value_holm),
+  !anyNA(primary_results$decision_holm)
+)
+
+
+# Displaying a readable summary 
+
+# Keeping formatted values separate from the full-precision results
+primary_results_display <- data.frame(
+  question = primary_results$question,
+  records = primary_results$records,
+  effect_size_name = primary_results$effect_size_name,
+  effect_size = round(primary_results$effect_size, 4),
+  p_value = format.pval(
+    primary_results$p_value,
+    digits = 4
+  ),
+  p_value_holm = format.pval(
+    primary_results$p_value_holm,
+    digits = 4
+  ),
+  decision_holm = primary_results$decision_holm,
+  decision_changed = primary_results$decision_changed,
+  row.names = NULL
+)
+
+cat("\nFinal primary results after Holm adjustment\n")
+print(primary_results_display, row.names = FALSE)
+
+
+# Saving the full-precision primary results
+
+primary_results_output <- file.path(
+  output_dir,
+  "14_primary_results_holm_adjusted.csv"
+)
+
+write.csv(
+  primary_results,
+  primary_results_output,
+  row.names = FALSE
+)
+
+# Saving the underlying test objects for reproducibility
+primary_tests_output <- file.path(
+  output_dir,
+  "15_primary_test_objects.rds"
+)
+
+saveRDS(
+  list(
+    alpha = alpha,
+    adjustment_method = "holm",
+    family = names(primary_tests),
+    tests = primary_tests,
+    results = primary_results
+  ),
+  primary_tests_output
+)
+
+# Earlier question-specific CSVs retain their original unadjusted results
+# Use the combined table above for final primary-test decisions
+
+
+# Checking that the outputs were created 
+
+primary_outputs <- c(
+  primary_results_output,
+  primary_tests_output
+)
+
+stopifnot(
+  all(file.exists(primary_outputs)),
+  all(file.info(primary_outputs)$size > 0)
+)
+
+cat(
+  "\nSection 8 completed.",
+  "\nPrimary tests adjusted:", nrow(primary_results),
+  "\nAdjustment method: Holm.",
+  "\nSignificance level:", alpha,
+  "\nNull hypotheses rejected after adjustment:",
+  sum(primary_results$p_value_holm <= alpha),
+  "\nDecisions changed by adjustment:",
+  sum(primary_results$decision_changed),
+  "\n"
+)
+
+print(primary_outputs)
