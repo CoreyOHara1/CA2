@@ -1387,5 +1387,344 @@ print(rq3_chart)
 
 
 
+# SECTION 6: Testing analytical period and property status
 
+# Checking that the required dataset and folders are available
+stopifnot(
+  exists("categorical_data"),
+  exists("output_dir"),
+  exists("figures_dir"),
+  exists("alpha"),
+  nrow(categorical_data) == 5957,
+  is.factor(categorical_data$period),
+  is.factor(categorical_data$property_status),
+  !anyNA(categorical_data$period),
+  !anyNA(categorical_data$property_status)
+)
+
+# Checking that the three analytical periods are present
+stopifnot(
+  setequal(
+    levels(droplevels(categorical_data$period)),
+    c("2019", "2020-2021", "2022-2025")
+  )
+)
+
+# Confirming the research question and hypotheses
+cat(
+  "\nRQ4: Analytical period and property status",
+  "\nH0: The proportion of new-property records is the same across periods.",
+  "\nH1: At least one period has a different proportion.",
+  "\nTest: Pearson chi-squared test of independence.",
+  "\n"
+)
+
+
+# Creating the observed frequency table
+
+# Keeping periods in chronological order
+rq4_period <- factor(
+  categorical_data$period,
+  levels = c("2019", "2020-2021", "2022-2025")
+)
+
+# Removing unused property-status levels
+rq4_property_status <- droplevels(
+  categorical_data$property_status
+)
+
+# Checking that property status has the two expected categories
+stopifnot(
+  nlevels(rq4_property_status) == 2
+)
+
+rq4_table <- table(
+  period = rq4_period,
+  property_status = rq4_property_status
+)
+
+# Checking that all records are included and margins are positive
+stopifnot(
+  sum(rq4_table) == nrow(categorical_data),
+  all(rowSums(rq4_table) > 0),
+  all(colSums(rq4_table) > 0)
+)
+
+cat("\nRQ4: Observed counts, including totals\n")
+print(addmargins(rq4_table))
+
+
+# Calculating percentages within each period 
+
+# Each row sums to 100%
+rq4_percentages <- prop.table(
+  rq4_table,
+  margin = 1
+) * 100
+
+cat("\nRQ4: Property-status percentages within each period\n")
+print(round(rq4_percentages, 2))
+
+
+# Checking expected counts before testing 
+
+rq4_expected_counts <- outer(
+  rowSums(rq4_table),
+  colSums(rq4_table)
+) / sum(rq4_table)
+
+dimnames(rq4_expected_counts) <- dimnames(rq4_table)
+
+cat("\nRQ4: Expected counts under independence\n")
+print(round(rq4_expected_counts, 2))
+
+cat(
+  "\nMinimum expected count:",
+  round(min(rq4_expected_counts), 2),
+  "\nCells with expected counts below 5:",
+  sum(rq4_expected_counts < 5),
+  "\n"
+)
+
+# Using a conservative check for the Pearson approximation
+# If this stops, review the expected counts before proceeding
+if (any(rq4_expected_counts < 5)) {
+  stop(
+    paste(
+      "At least one expected count is below 5.",
+      "Review the table before using the planned Pearson approximation."
+    )
+  )
+}
+
+
+# Running the primary RQ4 test 
+
+rq4_test <- chisq.test(
+  rq4_table,
+  correct = FALSE
+)
+
+cat("\nRQ4: Pearson chi-squared test\n")
+print(rq4_test)
+
+# Checking that the test returned valid results
+stopifnot(
+  inherits(rq4_test, "htest"),
+  is.finite(rq4_test$statistic),
+  is.finite(rq4_test$p.value),
+  rq4_test$p.value >= 0,
+  rq4_test$p.value <= 1
+)
+
+
+# Calculating Cramer's V 
+
+rq4_n <- sum(rq4_table)
+
+rq4_cramers_v <- sqrt(
+  unname(rq4_test$statistic) /
+    (
+      rq4_n *
+        min(
+          nrow(rq4_table) - 1,
+          ncol(rq4_table) - 1
+        )
+    )
+)
+
+cat(
+  "\nRQ4 Cramer's V:",
+  round(rq4_cramers_v, 4),
+  "\n"
+)
+
+
+# Preparing a detailed cell-level table
+
+rq4_cell_summary <- as.data.frame(
+  rq4_table,
+  responseName = "observed_count",
+  stringsAsFactors = FALSE
+)
+
+# Table conversion and vectorisation use the same cell order
+rq4_cell_summary$within_period_percent <-
+  as.vector(rq4_percentages)
+
+rq4_cell_summary$expected_count <-
+  as.vector(rq4_test$expected)
+
+rq4_cell_summary$standardised_residual <-
+  as.vector(rq4_test$stdres)
+
+cat("\nRQ4: Cell-level summary\n")
+print(rq4_cell_summary, row.names = FALSE)
+
+
+# Saving the primary test result 
+
+rq4_results <- data.frame(
+  question = "RQ4",
+  test = "Pearson chi-squared test of independence",
+  records = rq4_n,
+  statistic = unname(rq4_test$statistic),
+  df = unname(rq4_test$parameter),
+  p_value = rq4_test$p.value,
+  cramers_v = rq4_cramers_v,
+  minimum_expected_count = min(rq4_test$expected),
+  cells_expected_below_5 = sum(rq4_test$expected < 5),
+  alpha = alpha,
+  decision_unadjusted = ifelse(
+    rq4_test$p.value <= alpha,
+    "Reject H0 before primary Holm adjustment",
+    "Insufficient evidence to reject H0"
+  ),
+  primary_holm_status = "Pending adjustment across RQ1-RQ5",
+  row.names = NULL
+)
+
+write.csv(
+  rq4_cell_summary,
+  file.path(output_dir, "10_RQ4_property_status_by_period.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  rq4_results,
+  file.path(output_dir, "11_RQ4_chi_squared_result.csv"),
+  row.names = FALSE
+)
+
+
+# Creating the property-status percentage chart 
+
+rq4_chart <- file.path(
+  figures_dir,
+  "09_RQ4_property_status_by_period.png"
+)
+
+# Matching colours to the displayed property-status order
+rq4_colours <- c("#FF7F50", "#5B7083")
+
+png(
+  rq4_chart,
+  width = 2200,
+  height = 1500,
+  res = 180
+)
+
+par(
+  mar = c(6, 6, 6, 2),
+  las = 1
+)
+
+# Transposing so each bar represents an analytical period
+rq4_bar_positions <- barplot(
+  t(rq4_percentages),
+  beside = FALSE,
+  col = rq4_colours,
+  border = "white",
+  ylim = c(0, 100),
+  main = "Property status by analytical period",
+  xlab = "Analytical period",
+  ylab = "Records within period (%)",
+  names.arg = rownames(rq4_table),
+  cex.names = 0.95
+)
+
+# Adding percentage labels inside each segment
+for (period_index in seq_len(nrow(rq4_percentages))) {
+  
+  segment_percentages <- rq4_percentages[period_index, ]
+  
+  segment_centres <-
+    cumsum(segment_percentages) - segment_percentages / 2
+  
+  text(
+    x = rep(
+      rq4_bar_positions[period_index],
+      length(segment_percentages)
+    ),
+    y = segment_centres,
+    labels = paste0(
+      formatC(
+        segment_percentages,
+        format = "f",
+        digits = 1
+      ),
+      "%"
+    ),
+    col = "black",
+    cex = 0.9
+  )
+}
+
+# Putting the legend above the plotting area
+legend(
+  "top",
+  inset = c(0, -0.14),
+  legend = colnames(rq4_table),
+  fill = rq4_colours,
+  horiz = TRUE,
+  bty = "n",
+  xpd = NA,
+  cex = 0.85
+)
+
+mtext(
+  paste0(
+    "Period totals: ",
+    paste(
+      paste0(
+        rownames(rq4_table),
+        " (n = ",
+        rowSums(rq4_table),
+        ")"
+      ),
+      collapse = "; "
+    )
+  ),
+  side = 1,
+  line = 4,
+  cex = 0.75
+)
+
+dev.off()
+
+
+# Checking that the outputs were created
+
+rq4_outputs <- file.path(
+  output_dir,
+  c(
+    "10_RQ4_property_status_by_period.csv",
+    "11_RQ4_chi_squared_result.csv"
+  )
+)
+
+stopifnot(
+  all(file.exists(rq4_outputs)),
+  all(file.info(rq4_outputs)$size > 0),
+  file.exists(rq4_chart),
+  file.info(rq4_chart)$size > 0
+)
+
+cat(
+  "\nSection 6 completed.",
+  "\nRQ4 records:", rq4_n,
+  "\nChi-squared statistic:",
+  round(unname(rq4_test$statistic), 3),
+  "\nDegrees of freedom:", unname(rq4_test$parameter),
+  "\nUnadjusted p-value:",
+  format.pval(rq4_test$p.value, digits = 4),
+  "\nCramer's V:", round(rq4_cramers_v, 4),
+  "\nMinimum expected count:",
+  round(min(rq4_test$expected), 2),
+  "\nPrimary Holm adjustment: pending RQ1-RQ5.",
+  "\n"
+)
+
+print(rq4_outputs)
+print(rq4_chart)
 
