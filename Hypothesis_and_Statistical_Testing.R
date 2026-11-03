@@ -2905,3 +2905,72 @@ if (
 }
 
 print(sensitivity_outputs)
+
+
+
+
+
+
+
+
+
+
+
+
+# Saving session info and final workspace
+
+# Checking the analysis has reached its final results
+stopifnot(
+  exists("output_dir"),
+  dir.exists(output_dir),
+  exists("primary_results"),
+  exists("sensitivity_results"),
+  exists("duplicate_policy_comparison"),
+  nrow(primary_results) == 5,
+  nrow(sensitivity_results) == 5,
+  nrow(duplicate_policy_comparison) == 5
+)
+
+# Defining the final output files
+session_info_output <- file.path(
+  output_dir,
+  "19_session_info.txt"
+)
+
+workspace_output <- file.path(
+  output_dir,
+  "20_final_analysis_workspace.RData"
+)
+
+# Recording the R version, platform and package information
+writeLines(
+  capture.output(sessionInfo()),
+  session_info_output
+)
+
+# Saving all objects currently in the global workspace
+save.image(
+  file = workspace_output,
+  compress = TRUE,
+  safe = TRUE
+)
+
+# Checking that both files were created and are non-empty
+final_environment_outputs <- c(
+  session_info_output,
+  workspace_output
+)
+
+stopifnot(
+  all(file.exists(final_environment_outputs)),
+  all(file.info(final_environment_outputs)$size > 0)
+)
+
+cat(
+  "\nSection 10 completed.",
+  "\nR session information saved.",
+  "\nFinal analysis workspace saved.",
+  "\n"
+)
+
+print(final_environment_outputs)
