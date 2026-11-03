@@ -1,2 +1,2 @@
-"question","test","statistic","df","p_value","epsilon_squared","alpha","decision"
-"RQ1","Kruskal-Wallis rank sum test",333.466723951011,2,3.87811733547129e-73,0.0654167602034756,0.05,"Reject H0"
+"question","test","records","statistic","df","p_value","eta_squared_H","alpha","decision_unadjusted","primary_holm_status"
+"RQ1","Kruskal-Wallis rank sum test",5070,333.466723951011,2,3.87811733547129e-73,0.0654167602034756,0.05,"Reject H0 before primary Holm adjustment","Pending adjustment across RQ1-RQ5"
