@@ -2405,3 +2405,524 @@ cat(
 )
 
 print(primary_outputs)
+
+
+
+
+
+
+
+
+
+
+
+
+# SECTION 9: Checking sensitivity to the duplicate-record policy 
+
+# Checking that the required datasets and main results are available
+stopifnot(
+  exists("price_data_all_records"),
+  exists("quarter_data_all_records"),
+  exists("categorical_data_all_records"),
+  exists("primary_results"),
+  exists("output_dir"),
+  exists("alpha"),
+  nrow(price_data_all_records) == 5074,
+  nrow(quarter_data_all_records) == 676,
+  nrow(categorical_data_all_records) == 5964,
+  nrow(primary_results) == 5,
+  identical(
+    primary_results$question,
+    c("RQ1", "RQ2", "RQ3", "RQ4", "RQ5")
+  ),
+  all(primary_results$alpha == alpha)
+)
+
+cat(
+  "\nDuplicate-policy sensitivity check",
+  "\nMain analysis: Prepared datasets with the main duplicate policy.",
+  "\nSensitivity analysis: All formatted records, retaining duplicates.",
+  "\nThe eligibility rules for each research question remain unchanged.",
+  "\n"
+)
+
+
+# Checking the sensitivity datasets 
+
+stopifnot(
+  is.numeric(price_data_all_records$price_eur),
+  inherits(price_data_all_records$sale_date, "Date"),
+  is.factor(price_data_all_records$period),
+  !anyNA(price_data_all_records$price_eur),
+  !anyNA(price_data_all_records$sale_date),
+  !anyNA(price_data_all_records$period),
+  all(is.finite(price_data_all_records$price_eur)),
+  all(is.finite(as.numeric(price_data_all_records$sale_date))),
+  length(unique(price_data_all_records$price_eur)) > 1,
+  length(unique(price_data_all_records$sale_date)) > 1,
+  all(
+    price_data_all_records$sale_date >= as.Date("2019-01-01")
+  ),
+  all(
+    price_data_all_records$sale_date <= as.Date("2025-12-31")
+  ),
+  is.numeric(quarter_data_all_records$price_eur),
+  is.factor(quarter_data_all_records$quarter),
+  !anyNA(quarter_data_all_records$price_eur),
+  !anyNA(quarter_data_all_records$quarter),
+  all(is.finite(quarter_data_all_records$price_eur)),
+  is.factor(categorical_data_all_records$period),
+  is.factor(categorical_data_all_records$property_status),
+  is.factor(categorical_data_all_records$not_full_market_price),
+  !anyNA(categorical_data_all_records$period),
+  !anyNA(categorical_data_all_records$property_status),
+  !anyNA(categorical_data_all_records$not_full_market_price)
+)
+
+# Checking that all required groups are present
+stopifnot(
+  setequal(
+    levels(droplevels(price_data_all_records$period)),
+    c("2019", "2020-2021", "2022-2025")
+  ),
+  setequal(
+    levels(droplevels(quarter_data_all_records$quarter)),
+    c("Q1", "Q2", "Q3", "Q4")
+  ),
+  setequal(
+    levels(droplevels(categorical_data_all_records$period)),
+    c("2019", "2020-2021", "2022-2025")
+  ),
+  setequal(
+    levels(droplevels(categorical_data_all_records$property_status)),
+    c("New", "Second-hand")
+  ),
+  setequal(
+    levels(
+      droplevels(
+        categorical_data_all_records$not_full_market_price
+      )
+    ),
+    c("No", "Yes")
+  )
+)
+
+
+# Creating the sensitivity contingency tables 
+
+sensitivity_period <- factor(
+  categorical_data_all_records$period,
+  levels = c("2019", "2020-2021", "2022-2025")
+)
+
+rq4_sensitivity_table <- table(
+  period = sensitivity_period,
+  property_status = factor(
+    categorical_data_all_records$property_status,
+    levels = c("New", "Second-hand")
+  )
+)
+
+rq5_sensitivity_table <- table(
+  period = sensitivity_period,
+  not_full_market_price = factor(
+    categorical_data_all_records$not_full_market_price,
+    levels = c("No", "Yes")
+  )
+)
+
+stopifnot(
+  sum(rq4_sensitivity_table) ==
+    nrow(categorical_data_all_records),
+  sum(rq5_sensitivity_table) ==
+    nrow(categorical_data_all_records),
+  all(rowSums(rq4_sensitivity_table) > 0),
+  all(colSums(rq4_sensitivity_table) > 0),
+  all(rowSums(rq5_sensitivity_table) > 0),
+  all(colSums(rq5_sensitivity_table) > 0)
+)
+
+# Calculating expected counts before applying Pearson's test
+rq4_sensitivity_expected <- outer(
+  rowSums(rq4_sensitivity_table),
+  colSums(rq4_sensitivity_table)
+) / sum(rq4_sensitivity_table)
+
+rq5_sensitivity_expected <- outer(
+  rowSums(rq5_sensitivity_table),
+  colSums(rq5_sensitivity_table)
+) / sum(rq5_sensitivity_table)
+
+dimnames(rq4_sensitivity_expected) <-
+  dimnames(rq4_sensitivity_table)
+
+dimnames(rq5_sensitivity_expected) <-
+  dimnames(rq5_sensitivity_table)
+
+cat("\nSensitivity RQ4: Expected counts\n")
+print(round(rq4_sensitivity_expected, 2))
+
+cat("\nSensitivity RQ5: Expected counts\n")
+print(round(rq5_sensitivity_expected, 2))
+
+# Using the same conservative expected-count check as the main analysis
+if (
+  any(rq4_sensitivity_expected < 5) ||
+  any(rq5_sensitivity_expected < 5)
+) {
+  stop(
+    paste(
+      "At least one sensitivity expected count is below 5.",
+      "Review the tables before proceeding."
+    )
+  )
+}
+
+
+# Rerunning the five primary tests
+
+rq1_sensitivity_test <- kruskal.test(
+  price_eur ~ period,
+  data = price_data_all_records
+)
+
+rq2_sensitivity_test <- kruskal.test(
+  price_eur ~ quarter,
+  data = quarter_data_all_records
+)
+
+rq3_sensitivity_test <- cor.test(
+  x = as.numeric(price_data_all_records$sale_date),
+  y = price_data_all_records$price_eur,
+  method = "spearman",
+  alternative = "two.sided",
+  exact = FALSE
+)
+
+rq4_sensitivity_test <- chisq.test(
+  rq4_sensitivity_table,
+  correct = FALSE
+)
+
+rq5_sensitivity_test <- chisq.test(
+  rq5_sensitivity_table,
+  correct = FALSE
+)
+
+sensitivity_tests <- list(
+  RQ1 = rq1_sensitivity_test,
+  RQ2 = rq2_sensitivity_test,
+  RQ3 = rq3_sensitivity_test,
+  RQ4 = rq4_sensitivity_test,
+  RQ5 = rq5_sensitivity_test
+)
+
+# Extracting full-precision sensitivity p-values
+sensitivity_p_values <- vapply(
+  sensitivity_tests,
+  function(test) unname(test$p.value),
+  numeric(1)
+)
+
+stopifnot(
+  all(is.finite(sensitivity_p_values)),
+  all(sensitivity_p_values >= 0),
+  all(sensitivity_p_values <= 1)
+)
+
+# Adjusting across the five sensitivity tests only
+sensitivity_p_values_holm <- p.adjust(
+  sensitivity_p_values,
+  method = "holm"
+)
+
+
+# Calculating sensitivity effect sizes 
+
+# Defining a helper for eta-squared based on H
+sensitivity_eta_H <- function(test, records, groups) {
+  
+  max(
+    0,
+    (
+      unname(test$statistic) - groups + 1
+    ) / (
+      records - groups
+    )
+  )
+}
+
+# Defining a helper for Cramer's V
+sensitivity_cramers_v <- function(test) {
+  
+  sqrt(
+    unname(test$statistic) /
+      (
+        sum(test$observed) *
+          min(dim(test$observed) - 1)
+      )
+  )
+}
+
+sensitivity_effect_sizes <- c(
+  sensitivity_eta_H(
+    rq1_sensitivity_test,
+    nrow(price_data_all_records),
+    nlevels(droplevels(price_data_all_records$period))
+  ),
+  sensitivity_eta_H(
+    rq2_sensitivity_test,
+    nrow(quarter_data_all_records),
+    nlevels(droplevels(quarter_data_all_records$quarter))
+  ),
+  unname(rq3_sensitivity_test$estimate),
+  sensitivity_cramers_v(rq4_sensitivity_test),
+  sensitivity_cramers_v(rq5_sensitivity_test)
+)
+
+stopifnot(
+  all(is.finite(sensitivity_effect_sizes))
+)
+
+
+# Creating the sensitivity-results table
+
+sensitivity_results <- data.frame(
+  question = names(sensitivity_tests),
+  research_question = primary_results$research_question,
+  test = primary_results$test,
+  duplicate_policy = "All formatted records retained",
+  
+  records = c(
+    nrow(price_data_all_records),
+    nrow(quarter_data_all_records),
+    nrow(price_data_all_records),
+    sum(rq4_sensitivity_table),
+    sum(rq5_sensitivity_table)
+  ),
+  
+  statistic_name = primary_results$statistic_name,
+  
+  statistic = vapply(
+    sensitivity_tests,
+    function(test) unname(test$statistic),
+    numeric(1)
+  ),
+  
+  df = c(
+    unname(rq1_sensitivity_test$parameter),
+    unname(rq2_sensitivity_test$parameter),
+    NA_real_,
+    unname(rq4_sensitivity_test$parameter),
+    unname(rq5_sensitivity_test$parameter)
+  ),
+  
+  effect_size_name = primary_results$effect_size_name,
+  effect_size = sensitivity_effect_sizes,
+  p_value = unname(sensitivity_p_values),
+  p_value_holm = unname(sensitivity_p_values_holm),
+  adjustment_method = "Holm across five sensitivity tests",
+  alpha = alpha,
+  row.names = NULL,
+  stringsAsFactors = FALSE
+)
+
+sensitivity_results$decision_holm <- ifelse(
+  sensitivity_results$p_value_holm <= alpha,
+  "Reject H0",
+  "Insufficient evidence to reject H0"
+)
+
+stopifnot(
+  identical(
+    sensitivity_results$question,
+    primary_results$question
+  ),
+  all(is.finite(sensitivity_results$statistic)),
+  all(sensitivity_results$p_value_holm >=
+        sensitivity_results$p_value),
+  all(sensitivity_results$p_value_holm <= 1)
+)
+
+
+# Comparing the main and sensitivity analyses 
+
+duplicate_policy_comparison <- data.frame(
+  question = primary_results$question,
+  research_question = primary_results$research_question,
+  
+  main_records = primary_results$records,
+  all_records = sensitivity_results$records,
+  
+  extra_records = sensitivity_results$records -
+    primary_results$records,
+  
+  statistic_name = primary_results$statistic_name,
+  main_statistic = primary_results$statistic,
+  all_records_statistic = sensitivity_results$statistic,
+  
+  effect_size_name = primary_results$effect_size_name,
+  main_effect_size = primary_results$effect_size,
+  all_records_effect_size = sensitivity_results$effect_size,
+  
+  effect_size_difference = sensitivity_results$effect_size -
+    primary_results$effect_size,
+  
+  main_p_value = primary_results$p_value,
+  all_records_p_value = sensitivity_results$p_value,
+  
+  main_p_value_holm = primary_results$p_value_holm,
+  all_records_p_value_holm = sensitivity_results$p_value_holm,
+  
+  main_decision_holm = primary_results$decision_holm,
+  all_records_decision_holm = sensitivity_results$decision_holm,
+  
+  row.names = NULL,
+  stringsAsFactors = FALSE
+)
+
+duplicate_policy_comparison$decision_changed <-
+  duplicate_policy_comparison$main_decision_holm !=
+  duplicate_policy_comparison$all_records_decision_holm
+
+# Checking the expected differences in record counts
+stopifnot(
+  identical(
+    as.numeric(duplicate_policy_comparison$extra_records),
+    c(4, 1, 4, 7, 7)
+  )
+)
+
+# Checking whether the direction of the date-price association changed
+rq3_direction_changed <- (
+  sign(primary_results$effect_size[
+    primary_results$question == "RQ3"
+  ]) !=
+    sign(sensitivity_results$effect_size[
+      sensitivity_results$question == "RQ3"
+    ])
+)
+
+
+# Displaying a readable comparison 
+
+duplicate_policy_display <- data.frame(
+  question = duplicate_policy_comparison$question,
+  main_n = duplicate_policy_comparison$main_records,
+  all_records_n = duplicate_policy_comparison$all_records,
+  
+  main_effect_size = round(
+    duplicate_policy_comparison$main_effect_size,
+    4
+  ),
+  
+  all_records_effect_size = round(
+    duplicate_policy_comparison$all_records_effect_size,
+    4
+  ),
+  
+  main_p_holm = format.pval(
+    duplicate_policy_comparison$main_p_value_holm,
+    digits = 4
+  ),
+  
+  all_records_p_holm = format.pval(
+    duplicate_policy_comparison$all_records_p_value_holm,
+    digits = 4
+  ),
+  
+  decision_changed = duplicate_policy_comparison$decision_changed,
+  row.names = NULL
+)
+
+cat("\nDuplicate-policy sensitivity comparison\n")
+print(duplicate_policy_display, row.names = FALSE)
+
+
+# Saving the sensitivity results and comparison 
+
+sensitivity_output <- file.path(
+  output_dir,
+  "16_all_records_primary_results_holm.csv"
+)
+
+comparison_output <- file.path(
+  output_dir,
+  "17_duplicate_policy_sensitivity_comparison.csv"
+)
+
+sensitivity_objects_output <- file.path(
+  output_dir,
+  "18_duplicate_policy_sensitivity_objects.rds"
+)
+
+write.csv(
+  sensitivity_results,
+  sensitivity_output,
+  row.names = FALSE
+)
+
+write.csv(
+  duplicate_policy_comparison,
+  comparison_output,
+  row.names = FALSE
+)
+
+saveRDS(
+  list(
+    alpha = alpha,
+    adjustment_method = "holm",
+    tests = sensitivity_tests,
+    sensitivity_results = sensitivity_results,
+    comparison = duplicate_policy_comparison,
+    rq3_direction_changed = rq3_direction_changed
+  ),
+  sensitivity_objects_output
+)
+
+
+# Checking that the outputs were created 
+
+sensitivity_outputs <- c(
+  sensitivity_output,
+  comparison_output,
+  sensitivity_objects_output
+)
+
+stopifnot(
+  all(file.exists(sensitivity_outputs)),
+  all(file.info(sensitivity_outputs)$size > 0)
+)
+
+cat(
+  "\nSection 9 completed.",
+  "\nSensitivity primary tests:", nrow(sensitivity_results),
+  "\nAdjustment: Holm across the five sensitivity tests.",
+  "\nPrimary decisions changed:",
+  sum(duplicate_policy_comparison$decision_changed),
+  "\nRQ3 association direction changed:",
+  rq3_direction_changed,
+  "\n"
+)
+
+if (
+  !any(duplicate_policy_comparison$decision_changed) &&
+  !rq3_direction_changed
+) {
+  
+  cat(
+    "\nAll five Holm-adjusted decisions and the RQ3 direction",
+    "were unchanged under the alternative duplicate policy.",
+    "\nReview the effect-size differences before describing",
+    "the numerical results as stable.\n"
+  )
+  
+} else {
+  
+  cat(
+    "\nAt least one primary decision or the RQ3 direction changed.",
+    "\nReview the comparison table before reporting robustness.\n"
+  )
+}
+
+print(sensitivity_outputs)
